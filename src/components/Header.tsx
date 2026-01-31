@@ -211,7 +211,7 @@ export default function Header() {
               <Link href="/kyc" className="text-gray-300 hover:text-white transition-colors">
                 Identity
               </Link>
-              <Link href="/admin/kyc" className="text-gray-300 hover:text-white transition-colors">
+              <Link href="/admin" className="text-gray-300 hover:text-white transition-colors">
                 Admin
               </Link>
             </nav>
