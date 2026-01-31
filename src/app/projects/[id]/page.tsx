@@ -1,93 +1,125 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAccount, useWriteContract } from 'wagmi';
-import { createPublicClient, http, formatUnits, parseUnits, getAddress } from 'viem';
+import { createPublicClient, http, parseUnits } from 'viem';
 import { polygonAmoy } from 'viem/chains';
+import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import Header from '@/components/Header';
-import { CONTRACTS as DEPLOYED_CONTRACTS, EXPLORER_URL } from '@/config/contracts';
-import RefundSection from '@/components/RefundSection';
 
-// ============================================
-// PUBLIC CLIENT
-// ============================================
 const publicClient = createPublicClient({
   chain: polygonAmoy,
   transport: http('https://rpc-amoy.polygon.technology'),
 });
 
-// ============================================
-// CONTRACT ADDRESSES
-// ============================================
-const CONTRACTS = {
-  RWAProjectNFT: getAddress(DEPLOYED_CONTRACTS.RWAProjectNFT),
-  EscrowVault: getAddress(DEPLOYED_CONTRACTS.EscrowVault),
-};
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-// ============================================
-// TOKEN CONFIGURATION - STABLECOINS ONLY
-// ============================================
+// Token config
 const TOKENS = {
   USDC: {
+    address: CONTRACTS.USDC as `0x${string}`,
     symbol: 'USDC',
-    name: 'USD Coin',
-    address: getAddress(DEPLOYED_CONTRACTS.USDC),
-    icon: '💵',
+    decimals: 6,
   },
   USDT: {
+    address: CONTRACTS.USDT as `0x${string}`,
     symbol: 'USDT',
-    name: 'Tether USD',
-    address: getAddress(DEPLOYED_CONTRACTS.USDT),
-    icon: '💲',
+    decimals: 6,
   },
-} as const;
+};
 
-type TokenKey = keyof typeof TOKENS;
+// Status mappings - matches contract enum: 0=Pending, 1=Active, 2=Funded, 3=Completed, 4=Cancelled
+const STATUS_LABELS = ['Draft', 'Pending', 'Active', 'Funded', 'In Progress', 'Completed', 'Cancelled', 'Failed'];
 
-// ============================================
+const STATUS_COLORS: Record<number, string> = {
+  0: 'bg-gray-500/20 text-gray-400 border-gray-500/30',      // Draft
+  1: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', // Pending
+  2: 'bg-blue-500/20 text-blue-400 border-blue-500/30',       // Active
+  3: 'bg-green-500/20 text-green-400 border-green-500/30',    // Funded
+  4: 'bg-purple-500/20 text-purple-400 border-purple-500/30', // InProgress
+  5: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', // Completed
+  6: 'bg-red-500/20 text-red-400 border-red-500/30',          // Cancelled
+  7: 'bg-red-500/20 text-red-400 border-red-500/30',          // Failed
+};
+
 // ABIs
-// ============================================
 const RWAProjectNFTABI = [
   {
     name: 'getProject',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'totalProjects',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
+    inputs: [{ name: '_projectId', type: 'uint256' }],
+    outputs: [{
+      name: '',
+      type: 'tuple',
+      components: [
+        { name: 'id', type: 'uint256' },
+        { name: 'owner', type: 'address' },
+        { name: 'metadataURI', type: 'string' },
+        { name: 'fundingGoal', type: 'uint256' },
+        { name: 'totalRaised', type: 'uint256' },
+        { name: 'minInvestment', type: 'uint256' },
+        { name: 'maxInvestment', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+        { name: 'status', type: 'uint8' },
+        { name: 'securityToken', type: 'address' },
+        { name: 'escrowVault', type: 'address' },
+        { name: 'createdAt', type: 'uint256' },
+        { name: 'completedAt', type: 'uint256' },
+        { name: 'transferable', type: 'bool' },
+      ],
+    }],
   },
 ] as const;
 
 const EscrowVaultABI = [
+  {
+    name: 'getProjectFunding',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: '_projectId', type: 'uint256' }],
+    outputs: [{
+      name: '',
+      type: 'tuple',
+      components: [
+        { name: 'projectId', type: 'uint256' },
+        { name: 'fundingGoal', type: 'uint256' },
+        { name: 'totalRaised', type: 'uint256' },
+        { name: 'totalReleased', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+        { name: 'paymentToken', type: 'address' },
+        { name: 'fundingComplete', type: 'bool' },
+        { name: 'refundsEnabled', type: 'bool' },
+        { name: 'currentMilestone', type: 'uint256' },
+        { name: 'minInvestment', type: 'uint256' },
+        { name: 'maxInvestment', type: 'uint256' },
+        { name: 'projectOwner', type: 'address' },
+        { name: 'securityToken', type: 'address' },
+      ],
+    }],
+  },
+  {
+    name: 'getInvestorDetails',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: '_projectId', type: 'uint256' },
+      { name: '_investor', type: 'address' },
+    ],
+    outputs: [{
+      name: '',
+      type: 'tuple',
+      components: [
+        { name: 'amount', type: 'uint256' },
+        { name: 'amountUSD', type: 'uint256' },
+        { name: 'tokensMinted', type: 'uint256' },
+        { name: 'refunded', type: 'bool' },
+      ],
+    }],
+  },
   {
     name: 'investWithToken',
     type: 'function',
@@ -100,56 +132,11 @@ const EscrowVaultABI = [
     outputs: [],
   },
   {
-    name: 'getInvestorAmount',
+    name: 'claimRefund',
     type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_investor', type: 'address' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'getInvestorDetails',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_investor', type: 'address' },
-    ],
-    outputs: [
-      { name: 'amount', type: 'uint256' },
-      { name: 'amountUSD', type: 'uint256' },
-      { name: 'tokensMinted', type: 'uint256' },
-      { name: 'refunded', type: 'bool' },
-    ],
-  },
-  {
-    name: 'getProjectFunding',
-    type: 'function',
-    stateMutability: 'view',
+    stateMutability: 'nonpayable',
     inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'projectId', type: 'uint256' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'totalReleased', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'paymentToken', type: 'address' },
-          { name: 'fundingComplete', type: 'bool' },
-          { name: 'refundsEnabled', type: 'bool' },
-          { name: 'currentMilestone', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'projectOwner', type: 'address' },
-          { name: 'securityToken', type: 'address' },
-        ],
-      },
-    ],
+    outputs: [],
   },
 ] as const;
 
@@ -181,81 +168,46 @@ const ERC20ABI = [
     ],
     outputs: [{ name: '', type: 'bool' }],
   },
-  {
-    name: 'decimals',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint8' }],
-  },
 ] as const;
 
 const RWASecurityTokenABI = [
-  {
-    name: 'name',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }],
-  },
-  {
-    name: 'symbol',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }],
-  },
-  {
-    name: 'decimals',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint8' }],
-  },
-  {
-    name: 'totalSupply',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
+  { name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+  { name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
 ] as const;
 
-// ============================================
-// TYPES
-// ============================================
-interface ProjectData {
-  id: number;
+// Types
+interface ProjectMetadata {
+  name?: string;
+  description?: string;
+  image?: string;
+  documents?: Array<{
+    name: string;
+    url: string;
+    type?: string;
+  }>;
+  attributes?: {
+    category?: string;
+    projected_roi?: number;
+    company_name?: string;
+    location?: string;
+  };
+}
+
+interface Project {
+  id: bigint;
   owner: string;
   metadataURI: string;
-  fundingGoal: number;
-  totalRaised: number;
-  minInvestment: number;
-  maxInvestment: number;
+  fundingGoal: bigint;
+  totalRaised: bigint;
+  minInvestment: bigint;
+  maxInvestment: bigint;
   deadline: bigint;
   status: number;
   securityToken: string;
   escrowVault: string;
   createdAt: bigint;
-  usdDecimals: number;
-  tokenInfo?: {
-    name: string;
-    symbol: string;
-    decimals: number;
-    totalSupply: bigint;
-  };
-  metadata?: {
-    name?: string;
-    description?: string;
-    image?: string;
-    attributes?: Record<string, any>;
-  };
-}
-
-interface TokenBalance {
-  raw: bigint;
-  formatted: string;
-  decimals: number;
+  completedAt: bigint;
+  transferable: boolean;
 }
 
 interface InvestorDetails {
@@ -265,336 +217,240 @@ interface InvestorDetails {
   refunded: boolean;
 }
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
+// Helpers
 const formatUSD = (amount: number): string => {
-  return new Intl.NumberFormat('en-US', {
+  return amount.toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  });
 };
 
-const formatNumber = (num: number): string => {
-  return new Intl.NumberFormat('en-US').format(num);
+const formatUSDC = (amount: bigint): string => {
+  const num = Number(amount) / 1e6;
+  return num.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 };
 
-// ============================================
-// INVEST MODAL COMPONENT
-// ============================================
-interface InvestModalProps {
-  project: ProjectData;
+const convertIPFSUrl = (url: string): string => {
+  if (url.startsWith('ipfs://')) {
+    return `https://gateway.pinata.cloud/ipfs/${url.replace('ipfs://', '')}`;
+  }
+  return url;
+};
+
+// Investment Modal
+function InvestModal({
+  project,
+  escrowVault,
+  onClose,
+  onSuccess,
+}: {
+  project: Project;
+  escrowVault: string;
   onClose: () => void;
   onSuccess: () => void;
-}
-
-const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
+}) {
   const { address } = useAccount();
+  const [step, setStep] = useState<'input' | 'approving' | 'investing' | 'success' | 'error'>('input');
+  const [amount, setAmount] = useState('');
+  const [selectedToken, setSelectedToken] = useState<'USDC' | 'USDT'>('USDC');
+  const [balance, setBalance] = useState<bigint>(0n);
+  const [error, setError] = useState('');
+  const [txHash, setTxHash] = useState('');
+
   const { writeContractAsync } = useWriteContract();
-  
-  const [selectedToken, setSelectedToken] = useState<TokenKey>('USDC');
-  const [investAmount, setInvestAmount] = useState('');
-  const [balances, setBalances] = useState<Record<TokenKey, TokenBalance>>({
-    USDC: { raw: BigInt(0), formatted: '0', decimals: 0 },
-    USDT: { raw: BigInt(0), formatted: '0', decimals: 0 },
-  });
-  const [balancesLoaded, setBalancesLoaded] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState<'input' | 'approving' | 'investing' | 'confirming' | 'success' | 'error'>('input');
-  const [error, setError] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const token = TOKENS[selectedToken];
+  const minInvestment = Number(project.minInvestment);
+  const maxInvestment = Number(project.maxInvestment);
+  const amountNum = parseFloat(amount) || 0;
 
   useEffect(() => {
-    const loadBalances = async () => {
+    const loadBalance = async () => {
       if (!address) return;
-      
-      const newBalances: Record<TokenKey, TokenBalance> = {} as Record<TokenKey, TokenBalance>;
-      
-      for (const [key, token] of Object.entries(TOKENS)) {
-        try {
-          const decimals = await publicClient.readContract({
-            address: token.address,
-            abi: ERC20ABI,
-            functionName: 'decimals',
-          });
-          
-          const balance = await publicClient.readContract({
-            address: token.address,
-            abi: ERC20ABI,
-            functionName: 'balanceOf',
-            args: [address],
-          });
-          
-          newBalances[key as TokenKey] = {
-            raw: balance,
-            formatted: formatUnits(balance, Number(decimals)),
-            decimals: Number(decimals),
-          };
-        } catch (err) {
-          console.error(`Error loading ${key}:`, err);
-          newBalances[key as TokenKey] = {
-            raw: BigInt(0),
-            formatted: '0',
-            decimals: 0,
-          };
-        }
+      try {
+        const bal = await publicClient.readContract({
+          address: token.address,
+          abi: ERC20ABI,
+          functionName: 'balanceOf',
+          args: [address],
+        });
+        setBalance(bal as bigint);
+      } catch (err) {
+        console.error('Error loading balance:', err);
       }
-      
-      setBalances(newBalances);
-      setBalancesLoaded(true);
     };
-    
-    loadBalances();
-  }, [address]);
+    loadBalance();
+  }, [address, token.address]);
 
-  const investAmountNum = parseFloat(investAmount) || 0;
-  const minInvestmentUSD = project.minInvestment;
-  const maxInvestmentUSD = project.maxInvestment;
-  const fundingGoal = project.fundingGoal;
-  
-  const requiredTokenAmount = investAmountNum;
-  const userBalanceNum = parseFloat(balances[selectedToken].formatted) || 0;
-  const hasEnoughBalance = userBalanceNum >= requiredTokenAmount;
-  const isValidAmount = investAmountNum >= minInvestmentUSD && investAmountNum <= maxInvestmentUSD;
-  const ownershipShare = fundingGoal > 0 ? (investAmountNum / fundingGoal) * 100 : 0;
+  const balanceNum = Number(balance) / 1e6;
+  const isValidAmount = amountNum >= minInvestment && amountNum <= maxInvestment;
+  const hasBalance = amountNum <= balanceNum;
 
   const handleInvest = async () => {
-    if (!address) return;
-    
-    const escrowVaultAddress = CONTRACTS.EscrowVault;
-    
-    setIsLoading(true);
-    setError(null);
-    setStep('approving');
-    
+    if (!address || !amount) return;
+    setError('');
+    const amountInWei = parseUnits(amount, 6);
+
     try {
-      const token = TOKENS[selectedToken];
-      const tokenAddress = token.address;
-      const tokenDecimals = balances[selectedToken].decimals;
-      
-      if (tokenDecimals === 0) {
-        throw new Error('Token decimals not loaded. Please wait and try again.');
-      }
-      
-      const amountInTokenUnits = parseUnits(investAmountNum.toFixed(tokenDecimals), tokenDecimals);
-      const projectIdBigInt = BigInt(project.id);
-      
-      const currentAllowance = await publicClient.readContract({
-        address: tokenAddress,
+      setStep('approving');
+      const allowance = await publicClient.readContract({
+        address: token.address,
         abi: ERC20ABI,
         functionName: 'allowance',
-        args: [address, escrowVaultAddress],
+        args: [address, escrowVault as `0x${string}`],
       });
-      
-      if (currentAllowance < amountInTokenUnits) {
-        const approveHash = await writeContractAsync({
-          address: tokenAddress,
+
+      if ((allowance as bigint) < amountInWei) {
+        const approveTx = await writeContractAsync({
+          address: token.address,
           abi: ERC20ABI,
           functionName: 'approve',
-          args: [escrowVaultAddress, amountInTokenUnits],
+          args: [escrowVault as `0x${string}`, amountInWei],
         });
-        
-        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
-        
-        if (approveReceipt.status === 'reverted') {
-          throw new Error('Approval transaction failed');
-        }
+        await publicClient.waitForTransactionReceipt({ hash: approveTx });
       }
-      
+
       setStep('investing');
-      
-      const investHash = await writeContractAsync({
-        address: escrowVaultAddress,
+      const investTx = await writeContractAsync({
+        address: escrowVault as `0x${string}`,
         abi: EscrowVaultABI,
         functionName: 'investWithToken',
-        args: [projectIdBigInt, tokenAddress, amountInTokenUnits],
+        args: [project.id, token.address, amountInWei],
       });
-      
-      setTxHash(investHash);
-      setStep('confirming');
-      
-      const investReceipt = await publicClient.waitForTransactionReceipt({ hash: investHash });
-      
-      if (investReceipt.status === 'reverted') {
-        throw new Error('Investment transaction reverted on-chain.');
-      }
-      
+
+      setTxHash(investTx);
+      await publicClient.waitForTransactionReceipt({ hash: investTx });
       setStep('success');
-      
-      setTimeout(() => {
-        onSuccess();
-      }, 2000);
-      
+      onSuccess();
     } catch (err: any) {
       console.error('Investment error:', err);
-      
-      let errorMessage = err.message || 'Investment failed';
-      
-      if (errorMessage.includes('user rejected')) {
-        errorMessage = 'Transaction was rejected by user';
-      } else if (errorMessage.includes('insufficient funds')) {
-        errorMessage = 'Insufficient funds for gas';
-      } else if (errorMessage.includes('reverted')) {
-        errorMessage = 'Transaction failed. Possible reasons: not KYC verified, token not accepted, or exceeds investment limits.';
-      }
-      
-      setError(errorMessage);
+      setError(err.shortMessage || err.message || 'Transaction failed');
       setStep('error');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl max-w-md w-full p-6 border border-gray-700">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-2xl max-w-md w-full p-6 border border-gray-700 shadow-2xl">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-white">Invest in Project</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
         </div>
 
         {step === 'input' && (
           <>
-            {!balancesLoaded ? (
-              <div className="text-center py-8">
-                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
-                <p className="text-gray-400">Loading token balances...</p>
+            <div className="mb-4">
+              <label className="block text-sm text-gray-400 mb-2">Select Token</label>
+              <div className="flex gap-2">
+                {(['USDC', 'USDT'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setSelectedToken(t)}
+                    className={`flex-1 py-3 px-4 rounded-xl border-2 font-medium transition-all ${
+                      selectedToken === t
+                        ? 'border-blue-500 bg-blue-500/20 text-blue-400'
+                        : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:bg-gray-700/50'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <>
-                <div className="mb-4">
-                  <label className="block text-sm text-gray-400 mb-2">Select Stablecoin</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(Object.keys(TOKENS) as TokenKey[]).map((key) => (
-                      <button
-                        key={key}
-                        onClick={() => setSelectedToken(key)}
-                        className={`p-3 rounded-lg border ${
-                          selectedToken === key
-                            ? 'border-blue-500 bg-blue-500/20'
-                            : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">{TOKENS[key].icon}</span>
-                          <div className="text-left">
-                            <div className="text-white font-medium">{TOKENS[key].symbol}</div>
-                            <div className="text-xs text-gray-400">
-                              {formatNumber(parseFloat(balances[key].formatted))}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            </div>
 
-                <div className="mb-4">
-                  <label className="block text-sm text-gray-400 mb-2">Investment Amount (USD)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                    <input
-                      type="number"
-                      value={investAmount}
-                      onChange={(e) => setInvestAmount(e.target.value)}
-                      placeholder={`Min: $${minInvestmentUSD}`}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-8 py-3 text-white focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>Min: {formatUSD(minInvestmentUSD)}</span>
-                    <span>Max: {formatUSD(maxInvestmentUSD)}</span>
-                  </div>
-                </div>
+            <div className="mb-2 text-sm text-gray-400">
+              Balance: <span className="text-white font-medium">{balanceNum.toLocaleString()} {selectedToken}</span>
+            </div>
 
-                {investAmountNum > 0 && (
-                  <div className="bg-gray-800 rounded-lg p-4 mb-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">You Pay</span>
-                      <span className="text-white">{formatNumber(requiredTokenAmount)} {selectedToken}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">USD Value</span>
-                      <span className="text-white">{formatUSD(investAmountNum)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Ownership Share</span>
-                      <span className="text-green-400">≈ {ownershipShare.toFixed(4)}%</span>
-                    </div>
-                  </div>
-                )}
+            <div className="mb-6">
+              <label className="block text-sm text-gray-400 mb-2">Amount (USD)</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">$</span>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder={minInvestment.toLocaleString()}
+                  className="w-full bg-gray-700/50 border-2 border-gray-600 rounded-xl pl-8 pr-4 py-3 text-white text-lg focus:border-blue-500 focus:outline-none transition-colors"
+                />
+              </div>
+              <div className="flex justify-between mt-2 text-xs text-gray-500">
+                <span>Min: ${minInvestment.toLocaleString()}</span>
+                <span>Max: ${maxInvestment.toLocaleString()}</span>
+              </div>
+            </div>
 
-                {investAmountNum > 0 && !hasEnoughBalance && (
-                  <div className="text-red-400 text-sm mb-4">
-                    Insufficient {selectedToken} balance.
-                  </div>
-                )}
-
-                <button
-                  onClick={handleInvest}
-                  disabled={!isValidAmount || !hasEnoughBalance || isLoading}
-                  className={`w-full py-3 rounded-lg font-semibold ${
-                    isValidAmount && hasEnoughBalance
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  {!address ? 'Connect Wallet' : !hasEnoughBalance ? `Insufficient ${selectedToken}` : !isValidAmount ? 'Enter Valid Amount' : `Invest ${formatUSD(investAmountNum)}`}
-                </button>
-              </>
-            )}
+            <button
+              onClick={handleInvest}
+              disabled={!isValidAmount || !hasBalance}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-xl transition-all shadow-lg shadow-blue-500/25 disabled:shadow-none"
+            >
+              {!hasBalance ? 'Insufficient Balance' : !isValidAmount ? 'Enter Valid Amount' : `Invest $${amountNum.toLocaleString()}`}
+            </button>
           </>
         )}
 
         {step === 'approving' && (
-          <div className="text-center py-8">
-            <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-white">Approving {selectedToken}...</p>
-            <p className="text-gray-400 text-sm">Please confirm in your wallet</p>
+          <div className="text-center py-12">
+            <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-6"></div>
+            <p className="text-white text-lg font-medium">Approving {selectedToken}...</p>
+            <p className="text-gray-400 mt-2">Please confirm in your wallet</p>
           </div>
         )}
 
         {step === 'investing' && (
-          <div className="text-center py-8">
-            <div className="animate-spin w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-white">Processing Investment...</p>
-            <p className="text-gray-400 text-sm">Please confirm in your wallet</p>
-          </div>
-        )}
-
-        {step === 'confirming' && (
-          <div className="text-center py-8">
-            <div className="animate-pulse w-12 h-12 bg-yellow-500 rounded-full mx-auto mb-4 flex items-center justify-center">⏳</div>
-            <p className="text-white">Confirming Transaction...</p>
-            {txHash && (
-              <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-sm hover:underline">
-                View on Explorer
-              </a>
-            )}
+          <div className="text-center py-12">
+            <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-6"></div>
+            <p className="text-white text-lg font-medium">Processing Investment...</p>
+            <p className="text-gray-400 mt-2">Please confirm in your wallet</p>
           </div>
         )}
 
         {step === 'success' && (
           <div className="text-center py-8">
-            <div className="w-12 h-12 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">✓</div>
-            <p className="text-white text-lg font-semibold">Investment Successful!</p>
-            <p className="text-gray-400 text-sm mb-4">You invested {formatUSD(investAmountNum)} in this project</p>
+            <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-white text-2xl font-bold mb-2">Investment Successful!</p>
+            <p className="text-gray-400 mb-6">You invested ${amount} in this project</p>
             {txHash && (
-              <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+              <a
+                href={`${EXPLORER_URL}/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-6"
+              >
                 View Transaction
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
               </a>
             )}
+            <button onClick={onClose} className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl transition-colors">
+              Close
+            </button>
           </div>
         )}
 
         {step === 'error' && (
           <div className="text-center py-8">
-            <div className="w-12 h-12 bg-red-500 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">✗</div>
-            <p className="text-white text-lg font-semibold">Investment Failed</p>
-            <p className="text-red-400 text-sm mb-4">{error}</p>
-            <button onClick={() => { setStep('input'); setError(null); }} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+            <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <p className="text-white text-xl font-bold mb-2">Transaction Failed</p>
+            <p className="text-red-400 text-sm mb-6">{error}</p>
+            <button onClick={() => setStep('input')} className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl transition-colors">
               Try Again
             </button>
           </div>
@@ -602,152 +458,242 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
       </div>
     </div>
   );
-};
+}
 
-// ============================================
-// MAIN PAGE COMPONENT
-// ============================================
+// Refund Section
+function RefundSection({
+  projectId,
+  escrowVault,
+  investorDetails,
+  refundsEnabled,
+}: {
+  projectId: bigint;
+  escrowVault: string;
+  investorDetails: InvestorDetails | null;
+  refundsEnabled: boolean;
+}) {
+  const { address } = useAccount();
+  const [claiming, setClaiming] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [txHash, setTxHash] = useState('');
+  const [error, setError] = useState('');
+
+  const { writeContractAsync } = useWriteContract();
+
+  if (!investorDetails || investorDetails.amountUSD === 0n) return null;
+  
+  if (investorDetails.refunded) {
+    return (
+      <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+            <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-white">Refund Claimed</h3>
+        </div>
+        <p className="text-gray-400 ml-13">Your investment of {formatUSDC(investorDetails.amountUSD)} has been refunded.</p>
+      </div>
+    );
+  }
+
+  if (!refundsEnabled) {
+    return (
+      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
+            <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-white">Refunds Pending</h3>
+        </div>
+        <p className="text-gray-400">Refunds are not yet enabled. Your investment: {formatUSDC(investorDetails.amountUSD)}</p>
+      </div>
+    );
+  }
+
+  const handleClaim = async () => {
+    if (!address) return;
+    setClaiming(true);
+    setError('');
+
+    try {
+      const tx = await writeContractAsync({
+        address: escrowVault as `0x${string}`,
+        abi: EscrowVaultABI,
+        functionName: 'claimRefund',
+        args: [projectId],
+      });
+      setTxHash(tx);
+      await publicClient.waitForTransactionReceipt({ hash: tx });
+      setClaimed(true);
+    } catch (err: any) {
+      setError(err.shortMessage || err.message || 'Claim failed');
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  if (claimed) {
+    return (
+      <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+            <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-white">Refund Claimed!</h3>
+        </div>
+        <p className="text-gray-400 mb-3">{formatUSDC(investorDetails.amountUSD)} has been returned to your wallet.</p>
+        {txHash && (
+          <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm inline-flex items-center gap-1">
+            View Transaction
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-6">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
+          <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-bold text-white">Claim Your Refund</h3>
+      </div>
+      <p className="text-gray-400 mb-4">This project has been cancelled. Claim your investment of {formatUSDC(investorDetails.amountUSD)}.</p>
+      {error && <p className="text-red-400 text-sm mb-4 bg-red-500/10 p-3 rounded-lg">{error}</p>}
+      <button
+        onClick={handleClaim}
+        disabled={claiming}
+        className="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-600 text-white font-semibold py-3 rounded-xl transition-colors"
+      >
+        {claiming ? 'Claiming...' : 'Claim Refund'}
+      </button>
+    </div>
+  );
+}
+
+// Main Page
 export default function ProjectDetailPage() {
   const params = useParams();
   const projectId = params.id as string;
   const { address, isConnected } = useAccount();
-  
-  const [project, setProject] = useState<ProjectData | null>(null);
-  const [userInvestment, setUserInvestment] = useState<bigint>(BigInt(0));
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showInvestModal, setShowInvestModal] = useState(false);
   const [investorDetails, setInvestorDetails] = useState<InvestorDetails | null>(null);
   const [refundsEnabled, setRefundsEnabled] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showInvestModal, setShowInvestModal] = useState(false);
+  const [tokenName, setTokenName] = useState('');
+  const [tokenSymbol, setTokenSymbol] = useState('');
 
-  const loadProject = useCallback(async () => {
-    if (!projectId) return;
-    
-    setLoading(true);
-    setError(null);
-    
+  const loadData = async () => {
     try {
-      const usdDecimals = await publicClient.readContract({
-        address: TOKENS.USDC.address,
-        abi: ERC20ABI,
-        functionName: 'decimals',
-      });
-      
-      const divisor = Math.pow(10, Number(usdDecimals));
-      
-      const data = await publicClient.readContract({
-        address: CONTRACTS.RWAProjectNFT,
+      setLoading(true);
+      setError('');
+
+      const projectData = await publicClient.readContract({
+        address: CONTRACTS.RWAProjectNFT as `0x${string}`,
         abi: RWAProjectNFTABI,
         functionName: 'getProject',
         args: [BigInt(projectId)],
       });
-      
-      let escrowFunding: any = null;
-      try {
-        escrowFunding = await publicClient.readContract({
-          address: CONTRACTS.EscrowVault,
-          abi: EscrowVaultABI,
-          functionName: 'getProjectFunding',
-          args: [BigInt(projectId)],
-        });
-        setRefundsEnabled(escrowFunding.refundsEnabled);
-      } catch (err) {
-        console.log('Could not load escrow funding data:', err);
-      }
-      
-      const fundingGoalRaw = escrowFunding ? escrowFunding.fundingGoal : data.fundingGoal;
-      const totalRaisedRaw = escrowFunding ? escrowFunding.totalRaised : data.totalRaised;
-      const minInvestmentRaw = escrowFunding ? escrowFunding.minInvestment : data.minInvestment;
-      const maxInvestmentRaw = escrowFunding ? escrowFunding.maxInvestment : data.maxInvestment;
-      
-      const projectData: ProjectData = {
-        id: Number(data.id),
-        owner: data.owner,
-        metadataURI: data.metadataURI,
-        fundingGoal: Number(fundingGoalRaw) / divisor,
-        totalRaised: Number(totalRaisedRaw) / divisor,
-        minInvestment: Number(minInvestmentRaw) / divisor,
-        maxInvestment: Number(maxInvestmentRaw) / divisor,
-        deadline: data.deadline,
-        status: data.status,
-        securityToken: escrowFunding?.securityToken || data.securityToken,
-        escrowVault: data.escrowVault,
-        createdAt: data.createdAt,
-        usdDecimals: Number(usdDecimals),
-      };
-      
-      const tokenAddress = projectData.securityToken;
-      if (tokenAddress && tokenAddress !== '0x0000000000000000000000000000000000000000') {
+
+      const p = projectData as unknown as Project;
+      setProject(p);
+
+      // Load metadata
+      if (p.metadataURI) {
         try {
-          const [name, symbol, tokenDecimals, totalSupply] = await Promise.all([
-            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
-            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
-            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'decimals' }),
-            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'totalSupply' }),
+          const url = convertIPFSUrl(p.metadataURI);
+          const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (res.ok) {
+            const meta = await res.json();
+            setMetadata(meta);
+          }
+        } catch (err) {
+          console.error('Error loading metadata:', err);
+        }
+      }
+
+      // Load token info
+      if (p.securityToken && p.securityToken !== ZERO_ADDRESS) {
+        try {
+          const [name, symbol] = await Promise.all([
+            publicClient.readContract({ address: p.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
+            publicClient.readContract({ address: p.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
           ]);
-          
-          projectData.tokenInfo = {
-            name: name as string,
-            symbol: symbol as string,
-            decimals: Number(tokenDecimals),
-            totalSupply: totalSupply as bigint,
-          };
-        } catch (err) {
-          console.log('Could not load token info:', err);
-        }
+          setTokenName(name as string);
+          setTokenSymbol(symbol as string);
+        } catch {}
       }
-      
-      if (address) {
+
+      // Load escrow data
+      if (p.escrowVault && p.escrowVault !== ZERO_ADDRESS) {
         try {
-          const investment = await publicClient.readContract({
-            address: CONTRACTS.EscrowVault,
+          const funding = await publicClient.readContract({
+            address: p.escrowVault as `0x${string}`,
             abi: EscrowVaultABI,
-            functionName: 'getInvestorAmount',
-            args: [BigInt(projectId), address],
+            functionName: 'getProjectFunding',
+            args: [BigInt(projectId)],
           });
-          setUserInvestment(investment);
-          
-          // Fetch detailed investor info for refunds
-          const details = await publicClient.readContract({
-            address: CONTRACTS.EscrowVault,
-            abi: EscrowVaultABI,
-            functionName: 'getInvestorDetails',
-            args: [BigInt(projectId), address],
-          });
-          
-          setInvestorDetails({
-            amount: details[0],
-            amountUSD: details[1],
-            tokensMinted: details[2],
-            refunded: details[3],
-          });
-        } catch (err) {
-          console.log('Could not load user investment:', err);
-          setUserInvestment(BigInt(0));
-          setInvestorDetails(null);
-        }
+          setRefundsEnabled((funding as any).refundsEnabled || false);
+        } catch {}
       }
-      
-      setProject(projectData);
-      
     } catch (err: any) {
       console.error('Error loading project:', err);
       setError(err.message || 'Failed to load project');
     } finally {
       setLoading(false);
     }
-  }, [projectId, address]);
+  };
+
+  const loadInvestorDetails = async () => {
+    if (!address || !project || !project.escrowVault || project.escrowVault === ZERO_ADDRESS) return;
+    try {
+      const details = await publicClient.readContract({
+        address: project.escrowVault as `0x${string}`,
+        abi: EscrowVaultABI,
+        functionName: 'getInvestorDetails',
+        args: [BigInt(projectId), address],
+      });
+      setInvestorDetails(details as unknown as InvestorDetails);
+    } catch {}
+  };
 
   useEffect(() => {
-    loadProject();
-  }, [loadProject]);
+    if (projectId) loadData();
+  }, [projectId]);
+
+  useEffect(() => {
+    loadInvestorDetails();
+  }, [address, project]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950">
+      <div className="min-h-screen bg-gray-900">
         <Header />
-        <div className="flex items-center justify-center h-96">
-          <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full" />
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <div className="animate-pulse space-y-6">
+            <div className="h-6 bg-gray-700 rounded w-32"></div>
+            <div className="h-64 bg-gray-800 rounded-2xl"></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 h-96 bg-gray-800 rounded-2xl"></div>
+              <div className="h-64 bg-gray-800 rounded-2xl"></div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -755,255 +701,372 @@ export default function ProjectDetailPage() {
 
   if (error || !project) {
     return (
-      <div className="min-h-screen bg-gray-950">
+      <div className="min-h-screen bg-gray-900">
         <Header />
-        <div className="max-w-4xl mx-auto px-4 py-12">
-          <div className="bg-red-500/20 border border-red-500 rounded-lg p-6 text-center">
-            <h2 className="text-xl font-bold text-red-400 mb-2">Error Loading Project</h2>
-            <p className="text-gray-300">{error || 'Project not found'}</p>
-            <Link href="/projects" className="text-blue-400 hover:underline mt-4 inline-block">← Back to Projects</Link>
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Something went wrong!</h2>
+            <p className="text-gray-400 mb-6">{error || 'Project not found'}</p>
+            <Link href="/projects" className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Projects
+            </Link>
           </div>
         </div>
       </div>
     );
   }
 
-  const fundingGoal = project.fundingGoal;
-  const totalRaised = project.totalRaised;
-  const minInvestment = project.minInvestment;
-  const maxInvestment = project.maxInvestment;
-  const progress = fundingGoal > 0 ? Math.min((totalRaised / fundingGoal) * 100, 100) : 0;
+  // fundingGoal is plain USD, totalRaised is USDC (6 decimals)
+  const fundingGoalUSD = Number(project.fundingGoal);
+  const totalRaisedUSD = Number(project.totalRaised) / 1e6;
+  const progress = fundingGoalUSD > 0 ? (totalRaisedUSD / fundingGoalUSD) * 100 : 0;
+  
+  const minInvestment = Number(project.minInvestment);
+  const maxInvestment = Number(project.maxInvestment);
+  
+  const isOwner = address && project.owner.toLowerCase() === address.toLowerCase();
   const deadline = new Date(Number(project.deadline) * 1000);
-  
-  const isActive = (project.status === 1 || project.status === 2) && deadline > new Date();
-  const isCancelled = project.status === 4 || project.status === 5;
-  
-  const divisor = Math.pow(10, project.usdDecimals);
-  const userInvestmentUSD = Number(userInvestment) / divisor;
+  const isExpired = deadline < new Date();
+  const daysLeft = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  const isCancelled = project.status === 6;
+  const canInvest = project.status === 2 && !isExpired && !isOwner;
 
-  const statusLabels: Record<number, string> = {
-    0: 'Draft',
-    1: 'Pending',
-    2: 'Active',
-    3: 'Funded',
-    4: 'Cancelled',
-    5: 'Failed',
-  };
-
-  const statusColors: Record<number, string> = {
-    0: 'bg-gray-500',
-    1: 'bg-yellow-500',
-    2: 'bg-green-500',
-    3: 'bg-blue-500',
-    4: 'bg-red-500',
-    5: 'bg-red-600',
-  };
+  const displayName = metadata?.name || tokenName || `Project #${projectId}`;
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gray-900">
       <Header />
-      
+
       <main className="max-w-6xl mx-auto px-4 py-8">
-        <Link href="/projects" className="text-blue-400 hover:underline mb-6 inline-block">← Back to Projects</Link>
+        {/* Back Link */}
+        <Link href="/projects" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Projects
+        </Link>
+
+        {/* Hero Section */}
+        <div className="relative h-64 md:h-80 rounded-2xl overflow-hidden mb-8">
+          {metadata?.image ? (
+            <Image
+              src={convertIPFSUrl(metadata.image)}
+              alt={displayName}
+              fill
+              className="object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-600/30 to-purple-600/30" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/50 to-transparent" />
+          
+          {/* Status Badge */}
+          <div className="absolute top-4 right-4">
+            <span className={`px-4 py-2 rounded-full text-sm font-medium border ${STATUS_COLORS[project.status] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
+              {STATUS_LABELS[project.status] || 'Unknown'}
+            </span>
+          </div>
+
+          {/* Project Title Overlay */}
+          <div className="absolute bottom-0 left-0 right-0 p-6">
+            <div className="flex items-end justify-between">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">{displayName}</h1>
+                <div className="flex items-center gap-3">
+                  {tokenSymbol && (
+                    <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium">
+                      ${tokenSymbol}
+                    </span>
+                  )}
+                  {metadata?.attributes?.category && (
+                    <span className="px-3 py-1 bg-gray-700/80 text-gray-300 rounded-lg text-sm">
+                      {metadata.attributes.category}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {metadata?.attributes?.projected_roi && (
+                <div className="hidden md:block px-4 py-2 bg-green-500/20 border border-green-500/30 rounded-xl">
+                  <span className="text-green-400 font-medium">📈 {metadata.attributes.projected_roi}% Projected ROI</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Project Header */}
-            <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h1 className="text-2xl font-bold text-white mb-2">
-                    {project.metadata?.name || project.tokenInfo?.name || `Project #${project.id}`}
-                  </h1>
-                  <span className={`px-3 py-1 rounded-full text-sm text-white ${statusColors[project.status]}`}>
-                    {statusLabels[project.status]}
-                  </span>
-                </div>
-                {project.tokenInfo && (
-                  <div className="text-right">
-                    <div className="text-gray-400 text-sm">Token Symbol</div>
-                    <div className="text-white font-mono text-lg">{project.tokenInfo.symbol}</div>
-                  </div>
-                )}
+            {/* Progress Card */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-white">Funding Progress</h2>
+                <span className="text-2xl font-bold text-white">{progress.toFixed(1)}%</span>
               </div>
               
-              <p className="text-gray-300 mb-6">{project.metadata?.description || 'No description available'}</p>
+              <div className="h-4 bg-gray-700 rounded-full overflow-hidden mb-4">
+                <div 
+                  className={`h-full transition-all duration-500 ${isCancelled ? 'bg-red-500' : 'bg-gradient-to-r from-blue-600 to-blue-400'}`} 
+                  style={{ width: `${Math.min(progress, 100)}%` }} 
+                />
+              </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Funding Progress</span>
-                  <span className="text-white">{progress.toFixed(1)}%</span>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Total Raised</p>
+                  <p className="text-2xl font-bold text-white">{formatUSD(totalRaisedUSD)}</p>
                 </div>
-                <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500" style={{ width: `${Math.min(progress, 100)}%` }} />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">{formatUSD(totalRaised)} raised</span>
-                  <span className="text-gray-400">Goal: {formatUSD(fundingGoal)}</span>
+                <div className="text-right">
+                  <p className="text-gray-400 text-sm mb-1">Funding Goal</p>
+                  <p className="text-2xl font-bold text-white">{formatUSD(fundingGoalUSD)}</p>
                 </div>
               </div>
             </div>
 
-            {/* Refund Section - Shows for cancelled/failed projects */}
-            {isCancelled && investorDetails && (
+            {/* Description */}
+            {metadata?.description && (
+              <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                <h2 className="text-lg font-semibold text-white mb-4">About This Project</h2>
+                <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{metadata.description}</p>
+              </div>
+            )}
+
+            {/* Investment Details */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <h2 className="text-lg font-semibold text-white mb-4">Investment Details</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-700/50 rounded-xl p-4">
+                  <p className="text-gray-400 text-xs mb-1">Min Investment</p>
+                  <p className="text-white font-semibold">{formatUSD(minInvestment)}</p>
+                </div>
+                <div className="bg-gray-700/50 rounded-xl p-4">
+                  <p className="text-gray-400 text-xs mb-1">Max Investment</p>
+                  <p className="text-white font-semibold">{formatUSD(maxInvestment)}</p>
+                </div>
+                <div className="bg-gray-700/50 rounded-xl p-4">
+                  <p className="text-gray-400 text-xs mb-1">Deadline</p>
+                  <p className="text-white font-semibold">{deadline.toLocaleDateString()}</p>
+                </div>
+                <div className="bg-gray-700/50 rounded-xl p-4">
+                  <p className="text-gray-400 text-xs mb-1">Time Left</p>
+                  <p className={`font-semibold ${isCancelled ? 'text-red-400' : isExpired ? 'text-orange-400' : 'text-white'}`}>
+                    {isCancelled ? 'Cancelled' : isExpired ? 'Ended' : `${daysLeft} days`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Documents */}
+            {metadata?.documents && metadata.documents.length > 0 && (
+              <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                <h2 className="text-lg font-semibold text-white mb-4">Documents</h2>
+                <div className="space-y-3">
+                  {metadata.documents.map((doc, index) => (
+                    <a
+                      key={index}
+                      href={convertIPFSUrl(doc.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="flex items-center justify-between p-4 bg-gray-700/50 rounded-xl hover:bg-gray-700 transition-colors group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                          <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-white font-medium">{doc.name}</p>
+                          {doc.type && <p className="text-gray-400 text-sm">{doc.type}</p>}
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Refund Section */}
+            {isCancelled && project.escrowVault !== ZERO_ADDRESS && (
               <RefundSection
                 projectId={project.id}
-                escrowVault={CONTRACTS.EscrowVault}
-                projectStatus={project.status}
+                escrowVault={project.escrowVault}
                 investorDetails={investorDetails}
                 refundsEnabled={refundsEnabled}
               />
             )}
 
-            {/* Project Details */}
-            <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
-              <h2 className="text-lg font-semibold text-white mb-4">Project Details</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-gray-400 text-sm">Min Investment</div>
-                  <div className="text-white font-semibold">{formatUSD(minInvestment)}</div>
-                </div>
-                <div>
-                  <div className="text-gray-400 text-sm">Max Investment</div>
-                  <div className="text-white font-semibold">{formatUSD(maxInvestment)}</div>
-                </div>
-                <div>
-                  <div className="text-gray-400 text-sm">Deadline</div>
-                  <div className="text-white font-semibold">{deadline.toLocaleDateString()}</div>
-                </div>
-                <div>
-                  <div className="text-gray-400 text-sm">Project Owner</div>
-                  <a href={`${EXPLORER_URL}/address/${project.owner}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-mono text-sm">
-                    {project.owner.slice(0, 6)}...{project.owner.slice(-4)}
-                  </a>
-                </div>
-              </div>
-            </div>
-
             {/* Smart Contracts */}
-            <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
               <h2 className="text-lg font-semibold text-white mb-4">Smart Contracts</h2>
               <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Security Token</span>
-                  <a href={`${EXPLORER_URL}/address/${project.securityToken}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-mono text-sm">
-                    {project.securityToken.slice(0, 10)}...{project.securityToken.slice(-8)}
-                  </a>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Escrow Vault</span>
-                  <a href={`${EXPLORER_URL}/address/${CONTRACTS.EscrowVault}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-mono text-sm">
-                    {CONTRACTS.EscrowVault.slice(0, 10)}...{CONTRACTS.EscrowVault.slice(-8)}
-                  </a>
-                </div>
+                {project.securityToken && project.securityToken !== ZERO_ADDRESS && (
+                  <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                        <span className="text-purple-400 text-sm">🔐</span>
+                      </div>
+                      <span className="text-gray-300">Security Token</span>
+                    </div>
+                    <a
+                      href={`${EXPLORER_URL}/address/${project.securityToken}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 font-mono text-sm hover:text-blue-300 flex items-center gap-1"
+                    >
+                      {project.securityToken.slice(0, 6)}...{project.securityToken.slice(-4)}
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+                )}
+                {project.escrowVault && project.escrowVault !== ZERO_ADDRESS && (
+                  <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
+                        <span className="text-green-400 text-sm">🏦</span>
+                      </div>
+                      <span className="text-gray-300">Escrow Vault</span>
+                    </div>
+                    <a
+                      href={`${EXPLORER_URL}/address/${project.escrowVault}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 font-mono text-sm hover:text-blue-300 flex items-center gap-1"
+                    >
+                      {project.escrowVault.slice(0, 6)}...{project.escrowVault.slice(-4)}
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Investment Card */}
-            <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
-              <h2 className="text-lg font-semibold text-white mb-4">
-                {isCancelled ? 'Project Cancelled' : 'Invest Now'}
-              </h2>
-              
-              {userInvestmentUSD > 0 && (
-                <div className={`${isCancelled ? 'bg-red-500/20 border-red-500/50' : 'bg-green-500/20 border-green-500/50'} border rounded-lg p-4 mb-4`}>
-                  <div className={`${isCancelled ? 'text-red-400' : 'text-green-400'} text-sm`}>Your Investment</div>
-                  <div className="text-white text-xl font-bold">{formatUSD(userInvestmentUSD)}</div>
-                  {isCancelled && investorDetails && !investorDetails.refunded && refundsEnabled && (
-                    <div className="text-yellow-400 text-xs mt-1">Refund available</div>
-                  )}
+            {/* Invest Card */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700 sticky top-24">
+              <h2 className="text-lg font-semibold text-white mb-4">Invest Now</h2>
+
+              {!isConnected ? (
+                <div className="text-center py-6">
+                  <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-400">Connect your wallet to invest</p>
                 </div>
-              )}
-              
-              {!isCancelled && (
-                <>
-                  <div className="space-y-3 mb-6">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Accepted</span>
-                      <span className="text-white">USDC, USDT</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Min Investment</span>
-                      <span className="text-white">{formatUSD(minInvestment)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Deadline</span>
-                      <span className="text-white">{deadline.toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => setShowInvestModal(true)}
-                    disabled={!isConnected || !isActive}
-                    className={`w-full py-3 rounded-lg font-semibold ${
-                      isConnected && isActive
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                        : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {!isConnected ? 'Connect Wallet to Invest' : !isActive ? 'Investment Closed' : 'Invest with Stablecoin'}
-                  </button>
-                  
-                  <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-gray-800">
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <span className="text-2xl">💵</span>
-                      <span className="text-sm">USDC</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <span className="text-2xl">💲</span>
-                      <span className="text-sm">USDT</span>
-                    </div>
-                  </div>
-                </>
+              ) : isOwner ? (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-center">
+                  <p className="text-blue-400">You are the project owner</p>
+                </div>
+              ) : isCancelled ? (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-center">
+                  <p className="text-red-400">This project has been cancelled</p>
+                </div>
+              ) : isExpired ? (
+                <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 text-center">
+                  <p className="text-orange-400">Investment period has ended</p>
+                </div>
+              ) : project.status !== 1 ? (
+                <div className="bg-gray-700/50 rounded-xl p-4 text-center">
+                  <p className="text-gray-400">Not accepting investments</p>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowInvestModal(true)}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold py-4 rounded-xl transition-all shadow-lg shadow-blue-500/25"
+                >
+                  Invest Now
+                </button>
               )}
 
-              {isCancelled && (
-                <div className="text-center py-4">
-                  <p className="text-red-400 text-sm">This project has been cancelled.</p>
-                  {investorDetails && investorDetails.amountUSD > 0n && !investorDetails.refunded && refundsEnabled && (
-                    <p className="text-yellow-400 text-sm mt-2">You can claim your refund above.</p>
-                  )}
+              {/* Your Investment */}
+              {investorDetails && investorDetails.amountUSD > 0n && (
+                <div className="mt-6 pt-6 border-t border-gray-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-400">Your Investment</span>
+                    {investorDetails.refunded && (
+                      <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">Refunded</span>
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-white">{formatUSDC(investorDetails.amountUSD)}</p>
                 </div>
               )}
             </div>
 
-            {/* Token Info */}
-            {project.tokenInfo && (
-              <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
-                <h2 className="text-lg font-semibold text-white mb-4">Security Token</h2>
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Name</span>
-                    <span className="text-white">{project.tokenInfo.name}</span>
+            {/* Accepted Tokens */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <h2 className="text-lg font-semibold text-white mb-4">Accepted Tokens</h2>
+              <div className="space-y-3">
+                {Object.entries(TOKENS).map(([key, token]) => (
+                  <div key={key} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
+                        <span className="text-blue-400 text-xs font-bold">{token.symbol.charAt(0)}</span>
+                      </div>
+                      <span className="text-white font-medium">{token.symbol}</span>
+                    </div>
+                    <a
+                      href={`${EXPLORER_URL}/address/${token.address}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 text-sm hover:text-blue-300"
+                    >
+                      View
+                    </a>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Symbol</span>
-                    <span className="text-white font-mono">{project.tokenInfo.symbol}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Total Supply</span>
-                    <span className="text-white">
-                      {formatNumber(Number(formatUnits(project.tokenInfo.totalSupply, project.tokenInfo.decimals)))}
-                    </span>
-                  </div>
-                </div>
+                ))}
               </div>
-            )}
+            </div>
+
+            {/* Project Owner */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <h2 className="text-lg font-semibold text-white mb-4">Project Owner</h2>
+              <a
+                href={`${EXPLORER_URL}/address/${project.owner}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 p-3 bg-gray-700/50 rounded-xl hover:bg-gray-700 transition-colors"
+              >
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold">{project.owner.slice(2, 4).toUpperCase()}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-mono text-sm truncate">{project.owner}</p>
+                  <p className="text-gray-400 text-xs">View on Explorer</p>
+                </div>
+              </a>
+            </div>
           </div>
         </div>
       </main>
 
-      {showInvestModal && project && (
+      {/* Investment Modal */}
+      {showInvestModal && project && project.escrowVault !== ZERO_ADDRESS && (
         <InvestModal
           project={project}
+          escrowVault={project.escrowVault}
           onClose={() => setShowInvestModal(false)}
-          onSuccess={() => {
-            setShowInvestModal(false);
-            loadProject();
-          }}
+          onSuccess={() => { loadData(); loadInvestorDetails(); }}
         />
       )}
     </div>

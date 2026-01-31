@@ -52,7 +52,13 @@ const ProjectNFTABI = [
 
 interface Props {
   data: ProjectData;
-  onBack: () => void;
+  uploadedUrls?: {
+    logo?: string;
+    banner?: string;
+    pitchDeck?: string;
+    legalDocs: string[];
+  };
+  isConnected: boolean;
 }
 
 interface DeployedContracts {
@@ -274,26 +280,69 @@ export function StepDeploy({ data, onBack }: Props) {
       setTxHash(undefined);
       setStatus('uploading');
 
-      // Create metadata
+      // Create metadata object
       const metadata = {
         name: data.projectName,
         description: data.description,
-        image: '',
-        attributes: [
-          { trait_type: 'Category', value: data.category },
-          { trait_type: 'Funding Goal', value: `$${data.amountToRaise}` },
-          { trait_type: 'Token', value: `${data.tokenName} (${data.tokenSymbol})` },
-        ],
+        image: uploadedUrls?.banner || uploadedUrls?.logo || '',
+        external_url: data.website || '',
+        attributes: {
+          category: data.category,
+          projected_roi: data.projectedROI,
+          company_name: data.companyName,
+          jurisdiction: data.jurisdiction,
+        },
+        properties: {
+          funding_goal: data.amountToRaise,
+          token_name: data.tokenName,
+          token_symbol: data.tokenSymbol,
+          total_supply: data.totalSupply,
+          roi_timeline_months: data.roiTimelineMonths,
+          revenue_model: data.revenueModel,
+        },
+        documents: [] as Array<{ name: string; url: string; type: string }>,
       };
-      
-      // Mock IPFS upload - replace with real upload later
-      const uri = `ipfs://QmProject${Date.now()}`;
+
+      // Add uploaded documents
+      if (uploadedUrls?.pitchDeck) {
+        metadata.documents.push({
+          name: 'Pitch Deck',
+          url: uploadedUrls.pitchDeck,
+          type: 'PDF',
+        });
+      }
+      if (uploadedUrls?.legalDocs && uploadedUrls.legalDocs.length > 0) {
+        uploadedUrls.legalDocs.forEach((url, index) => {
+          metadata.documents.push({
+            name: `Legal Document ${index + 1}`,
+            url: url,
+            type: 'PDF',
+          });
+        });
+      }
+
+      console.log('Uploading metadata to IPFS:', metadata);
+
+      // Upload metadata to IPFS
+      const ipfsResponse = await fetch('/api/ipfs/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ metadata }),
+      });
+
+      if (!ipfsResponse.ok) {
+        const ipfsError = await ipfsResponse.json();
+        throw new Error(ipfsError.error || 'Failed to upload metadata to IPFS');
+      }
+
+      const ipfsResult = await ipfsResponse.json();
+      const uri = ipfsResult.ipfsUri;
       setMetadataUri(uri);
-      console.log('Metadata URI:', uri);
+      console.log('Metadata uploaded to IPFS:', uri);
 
       setStatus('waitingWallet');
 
-      // Prepare params
+      // Prepare params - fundingGoal is plain USD (no decimals)
       const fundingGoal = BigInt(data.amountToRaise);
       const minInvestment = BigInt(100);
       const maxInvestment = fundingGoal;
@@ -308,7 +357,7 @@ export function StepDeploy({ data, onBack }: Props) {
         deadline: new Date(Number(deadline) * 1000).toISOString(),
       });
 
-      // Use writeContractAsync for better control
+      // Deploy contract
       const hash = await writeContractAsync({
         address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
         abi: RWALaunchpadFactoryABI,

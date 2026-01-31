@@ -25,7 +25,7 @@ const RWAProjectNFTABI = [
     name: 'getProject',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
+    inputs: [{ name: '_projectId', type: 'uint256' }],
     outputs: [
       {
         name: '',
@@ -43,8 +43,8 @@ const RWAProjectNFTABI = [
           { name: 'securityToken', type: 'address' },
           { name: 'escrowVault', type: 'address' },
           { name: 'createdAt', type: 'uint256' },
-          { name: 'investorCount', type: 'uint256' },
-          { name: 'cancelled', type: 'bool' },
+          { name: 'completedAt', type: 'uint256' },
+          { name: 'transferable', type: 'bool' },
         ],
       },
     ],
@@ -80,44 +80,53 @@ interface Project {
   securityToken: string;
   escrowVault: string;
   createdAt: bigint;
-  investorCount: bigint;
-  cancelled: boolean;
+  completedAt: bigint;
+  transferable: boolean;
   metadata?: ProjectMetadata;
   tokenName?: string;
   tokenSymbol?: string;
 }
 
 // Contract enum: 0=Pending, 1=Active, 2=Funded, 3=Completed, 4=Cancelled
-const STATUS_LABELS = ['Pending', 'Active', 'Funded', 'Completed', 'Cancelled'];
+const STATUS_LABELS = ['Draft', 'Pending', 'Active', 'Funded', 'In Progress', 'Completed', 'Cancelled', 'Failed'];
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-// Helper to format USDC amounts (6 decimals)
-const formatUSDC = (amount: bigint): string => {
-  return (Number(amount) / 1e6).toLocaleString(undefined, {
+// Format USD - fundingGoal is PLAIN USD (no decimals!)
+const formatUSD = (amount: bigint): string => {
+  return Number(amount).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 0,
   });
 };
 
-// Helper to format USD amounts (no decimals)
-const formatUSD = (amount: bigint): string => {
-  return Number(amount).toLocaleString();
+// Format USDC - totalRaised is in USDC (6 decimals)
+const formatUSDC = (amount: bigint): string => {
+  return (Number(amount) / 1e6).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 };
 
 function ProjectCard({ project }: { project: Project }) {
-  // Check if cancelled via boolean OR status
-  const isCancelled = project.cancelled || project.status === 4;
-  const displayStatus = isCancelled ? 4 : project.status;
-
-  const progress = project.fundingGoal > 0n
-    ? Number((project.totalRaised * 100n) / (project.fundingGoal * 1000000n))
-    : 0;
+  const isCancelled = project.status === 6;
+  
+  // fundingGoal is plain USD, totalRaised is USDC (6 decimals)
+  const fundingGoalNum = Number(project.fundingGoal);
+  const totalRaisedNum = Number(project.totalRaised) / 1e6;
+  const progress = fundingGoalNum > 0 ? (totalRaisedNum / fundingGoalNum) * 100 : 0;
 
   const deadline = new Date(Number(project.deadline) * 1000);
   const isExpired = deadline < new Date();
   const daysLeft = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 
   const displayName = project.metadata?.name || project.tokenName || `Project #${project.id}`;
+  
+  // Safe status label lookup
+  const statusLabel = STATUS_LABELS[project.status] ?? `Status ${project.status}`;
 
   return (
     <Link href={`/projects/${project.id}`}>
@@ -146,12 +155,13 @@ function ProjectCard({ project }: { project: Project }) {
           <div className="absolute top-3 right-3">
             <span className={`px-3 py-1 text-xs font-medium rounded-full ${
               isCancelled ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-              displayStatus === 1 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-              displayStatus === 2 ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-              displayStatus === 3 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+              project.status === 1 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+              project.status === 2 ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+              project.status === 3 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+              project.status === 0 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
               'bg-gray-500/20 text-gray-400 border border-gray-500/30'
             }`}>
-              {STATUS_LABELS[displayStatus]}
+              {statusLabel}
             </span>
           </div>
         </div>
@@ -203,8 +213,8 @@ function ProjectCard({ project }: { project: Project }) {
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-400">Raised</span>
               <span className="text-white font-medium">
-                ${formatUSDC(project.totalRaised)} 
-                <span className="text-gray-500"> / ${formatUSD(project.fundingGoal)}</span>
+                {formatUSDC(project.totalRaised)} 
+                <span className="text-gray-500"> / {formatUSD(project.fundingGoal)}</span>
               </span>
             </div>
             <div className="w-full bg-gray-700 rounded-full h-2">
@@ -224,7 +234,7 @@ function ProjectCard({ project }: { project: Project }) {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              {Number(project.investorCount)} investors
+              {statusLabel}
             </div>
             <div className={`text-sm ${isCancelled ? 'text-red-400' : isExpired ? 'text-orange-400' : 'text-gray-400'}`}>
               {isCancelled ? 'Cancelled' : isExpired ? 'Ended' : `${daysLeft} days left`}
@@ -282,9 +292,12 @@ export default function ProjectsPage() {
               securityToken: projectData.securityToken,
               escrowVault: projectData.escrowVault,
               createdAt: projectData.createdAt,
-              investorCount: projectData.investorCount,
-              cancelled: projectData.cancelled,
+              completedAt: projectData.completedAt,
+              transferable: projectData.transferable,
             };
+
+            // Debug: log status value
+            console.log(`Project ${i}: status = ${projectData.status}`);
 
             // Load metadata
             if (project.metadataURI) {
@@ -311,11 +324,14 @@ export default function ProjectsPage() {
             }
 
             loadedProjects.push(project);
-          } catch {}
+          } catch (e) {
+            console.error(`Error loading project ${i}:`, e);
+          }
         }
 
         setProjects(loadedProjects);
       } catch (err) {
+        console.error('Error loading projects:', err);
         setError(err instanceof Error ? err.message : 'Failed to load projects');
       } finally {
         setLoading(false);
@@ -326,12 +342,11 @@ export default function ProjectsPage() {
   }, []);
 
   const filteredProjects = projects.filter((p) => {
-    // Check cancelled status via boolean OR status code
-    const isCancelled = p.cancelled || p.status === 4;
+    const isCancelled = p.status === 6;
 
-    if (filter === 'active' && (p.status !== 1 || isCancelled)) return false;
-    if (filter === 'funded' && (p.status !== 2 || isCancelled)) return false;
-    if (filter === 'ended' && !isCancelled && p.status !== 3) return false;
+    if (filter === 'active' && p.status !== 2) return false;  // 2 = Active
+    if (filter === 'funded' && p.status !== 3) return false;  // 3 = Funded
+    if (filter === 'ended' && p.status !== 5 && p.status !== 6 && p.status !== 7) return false; 
 
     if (search) {
       const s = search.toLowerCase();
