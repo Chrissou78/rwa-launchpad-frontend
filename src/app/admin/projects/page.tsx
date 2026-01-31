@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { createPublicClient, http, parseAbi } from 'viem';
+import { createPublicClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import Header from '@/components/Header';
 import Link from 'next/link';
+import { CONTRACTS } from '@/config/contracts';
 
-const PROJECT_NFT = '0x4497e4EA43C1A1Cd2B719fF0E4cea376364c1315';
+const PROJECT_NFT = CONTRACTS.RWAProjectNFT;
 const STATUS_NAMES = ['Pending', 'Active', 'Funded', 'Completed', 'Cancelled', 'Failed'];
 const STATUS_COLORS: Record<number, string> = {
   0: 'bg-gray-500/20 text-gray-400',
@@ -18,10 +19,43 @@ const STATUS_COLORS: Record<number, string> = {
   5: 'bg-orange-500/20 text-orange-400',
 };
 
-const projectNftAbi = parseAbi([
-  'function totalProjects() view returns (uint256)',
-  'function getProject(uint256) view returns (tuple(uint256 id, address owner, string metadataURI, uint256 fundingGoal, uint256 totalRaised, uint256 minInvestment, uint256 maxInvestment, uint256 deadline, uint8 status, address securityToken, address escrowVault, uint256 createdAt, uint256 completedAt, bool transferable))',
-]);
+const projectNftAbi = [
+  {
+    name: 'totalProjects',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'getProject',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'id', type: 'uint256' },
+          { name: 'owner', type: 'address' },
+          { name: 'metadataURI', type: 'string' },
+          { name: 'fundingGoal', type: 'uint256' },
+          { name: 'totalRaised', type: 'uint256' },
+          { name: 'minInvestment', type: 'uint256' },
+          { name: 'maxInvestment', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'status', type: 'uint8' },
+          { name: 'securityToken', type: 'address' },
+          { name: 'escrowVault', type: 'address' },
+          { name: 'createdAt', type: 'uint256' },
+          { name: 'completedAt', type: 'uint256' },
+          { name: 'transferable', type: 'bool' },
+        ],
+      },
+    ],
+  },
+] as const;
 
 interface Project {
   id: number;
@@ -55,7 +89,7 @@ export default function AdminProjectsPage() {
       });
 
       const total = await client.readContract({
-        address: PROJECT_NFT,
+        address: PROJECT_NFT as `0x${string}`,
         abi: projectNftAbi,
         functionName: 'totalProjects',
       }) as bigint;
@@ -64,7 +98,7 @@ export default function AdminProjectsPage() {
 
       for (let i = 1; i <= Number(total); i++) {
         const data = await client.readContract({
-          address: PROJECT_NFT,
+          address: PROJECT_NFT as `0x${string}`,
           abi: projectNftAbi,
           functionName: 'getProject',
           args: [BigInt(i)],
@@ -116,7 +150,6 @@ export default function AdminProjectsPage() {
       setResult(data);
 
       if (data.success) {
-        // Refresh projects list
         await fetchProjects();
       }
     } catch (error: any) {
