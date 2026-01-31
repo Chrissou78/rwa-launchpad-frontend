@@ -1,20 +1,94 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, createWalletClient, http, parseAbi } from 'viem';
+import { createPublicClient, createWalletClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 
 const PROJECT_NFT = '0x4497e4EA43C1A1Cd2B719fF0E4cea376364c1315';
 
-const projectNftAbi = parseAbi([
-  'function getProject(uint256) view returns (tuple(uint256 id, address owner, string metadataURI, uint256 fundingGoal, uint256 totalRaised, uint256 minInvestment, uint256 maxInvestment, uint256 deadline, uint8 status, address securityToken, address escrowVault, uint256 createdAt, uint256 completedAt, bool transferable))',
-  'function cancelProject(uint256, string)',
-  'function getProjectStatus(uint256) view returns (uint8)',
-]);
+const projectNftAbi = [
+  {
+    name: 'getProject',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'id', type: 'uint256' },
+          { name: 'owner', type: 'address' },
+          { name: 'metadataURI', type: 'string' },
+          { name: 'fundingGoal', type: 'uint256' },
+          { name: 'totalRaised', type: 'uint256' },
+          { name: 'minInvestment', type: 'uint256' },
+          { name: 'maxInvestment', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'status', type: 'uint8' },
+          { name: 'securityToken', type: 'address' },
+          { name: 'escrowVault', type: 'address' },
+          { name: 'createdAt', type: 'uint256' },
+          { name: 'completedAt', type: 'uint256' },
+          { name: 'transferable', type: 'bool' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'cancelProject',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_projectId', type: 'uint256' },
+      { name: '_reason', type: 'string' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'getProjectStatus',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: '_projectId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+] as const;
 
-const escrowAbi = parseAbi([
-  'function enableRefunds(uint256)',
-  'function getProjectFunding(uint256) view returns (tuple(uint256 projectId, uint256 fundingGoal, uint256 totalRaised, uint256 totalReleased, uint256 deadline, address paymentToken, bool fundingComplete, bool refundsEnabled, uint256 currentMilestone, uint256 minInvestment, uint256 maxInvestment, address projectOwner, address securityToken))',
-]);
+const escrowAbi = [
+  {
+    name: 'enableRefunds',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: '_projectId', type: 'uint256' }],
+    outputs: [],
+  },
+  {
+    name: 'getProjectFunding',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: '_projectId', type: 'uint256' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'projectId', type: 'uint256' },
+          { name: 'fundingGoal', type: 'uint256' },
+          { name: 'totalRaised', type: 'uint256' },
+          { name: 'totalReleased', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'paymentToken', type: 'address' },
+          { name: 'fundingComplete', type: 'bool' },
+          { name: 'refundsEnabled', type: 'bool' },
+          { name: 'currentMilestone', type: 'uint256' },
+          { name: 'minInvestment', type: 'uint256' },
+          { name: 'maxInvestment', type: 'uint256' },
+          { name: 'projectOwner', type: 'address' },
+          { name: 'securityToken', type: 'address' },
+        ],
+      },
+    ],
+  },
+] as const;
 
 const STATUS_NAMES = ['Pending', 'Active', 'Funded', 'Completed', 'Cancelled', 'Failed'];
 
@@ -27,7 +101,6 @@ export async function POST(
     const body = await request.json();
     const { reason = 'Project cancelled by admin', enableRefunds = true } = body;
 
-    // Validate admin key
     const adminKey = process.env.ADMIN_PRIVATE_KEY;
     if (!adminKey) {
       return NextResponse.json({ success: false, error: 'Admin key not configured' }, { status: 500 });
@@ -53,11 +126,10 @@ export async function POST(
       abi: projectNftAbi,
       functionName: 'getProject',
       args: [BigInt(projectId)],
-    }) as any;
+    });
 
     const currentStatus = Number(project.status);
 
-    // Check if can be cancelled
     if (currentStatus === 4) {
       return NextResponse.json({ 
         success: false, 
@@ -91,9 +163,10 @@ export async function POST(
     results.cancelled = true;
 
     // Step 2: Enable refunds if requested and there are funds
-    if (enableRefunds && project.totalRaised > 0n && project.escrowVault !== '0x0000000000000000000000000000000000000000') {
+    const zeroAddress = '0x0000000000000000000000000000000000000000';
+    if (enableRefunds && project.totalRaised > 0n && project.escrowVault !== zeroAddress) {
       const refundHash = await walletClient.writeContract({
-        address: project.escrowVault,
+        address: project.escrowVault as `0x${string}`,
         abi: escrowAbi,
         functionName: 'enableRefunds',
         args: [BigInt(projectId)],

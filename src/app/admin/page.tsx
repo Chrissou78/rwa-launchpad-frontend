@@ -22,10 +22,43 @@ const STATUS_COLORS: Record<number, string> = {
   5: 'bg-orange-500/20 text-orange-400',
 };
 
-const projectNftAbi = parseAbi([
-  'function totalProjects() view returns (uint256)',
-  'function getProject(uint256) view returns (tuple(uint256 id, address owner, string metadataURI, uint256 fundingGoal, uint256 totalRaised, uint256 minInvestment, uint256 maxInvestment, uint256 deadline, uint8 status, address securityToken, address escrowVault, uint256 createdAt, uint256 completedAt, bool transferable))',
-]);
+const projectNftAbi = [
+  {
+    name: 'totalProjects',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'getProject',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'id', type: 'uint256' },
+          { name: 'owner', type: 'address' },
+          { name: 'metadataURI', type: 'string' },
+          { name: 'fundingGoal', type: 'uint256' },
+          { name: 'totalRaised', type: 'uint256' },
+          { name: 'minInvestment', type: 'uint256' },
+          { name: 'maxInvestment', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'status', type: 'uint8' },
+          { name: 'securityToken', type: 'address' },
+          { name: 'escrowVault', type: 'address' },
+          { name: 'createdAt', type: 'uint256' },
+          { name: 'completedAt', type: 'uint256' },
+          { name: 'transferable', type: 'bool' },
+        ],
+      },
+    ],
+  },
+] as const;
 
 interface Project {
   id: number;
