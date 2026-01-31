@@ -98,6 +98,19 @@ const formatUSDC = (amount: bigint): string => {
   });
 };
 
+// Helper to format USD amounts (no decimals)
+const formatUSD = (amount: bigint): string => {
+  return Number(amount).toLocaleString();
+};
+
+// Helper to format USDC amounts (6 decimals)
+const formatUSDC = (amount: bigint): string => {
+  return (Number(amount) / 1e6).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+};
+
 function ProjectCard({ project }: { project: Project }) {
   const progress = project.fundingGoal > 0n
     ? Number((project.totalRaised * 100n) / project.fundingGoal)
