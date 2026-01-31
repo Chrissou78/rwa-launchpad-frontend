@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { useAccount, useWriteContract } from 'wagmi';
 import { createPublicClient, http, formatUnits, parseUnits, getAddress } from 'viem';
 import { polygonAmoy } from 'viem/chains';
-import Header  from '@/components/Header';
+import Header from '@/components/Header';
 import { CONTRACTS as DEPLOYED_CONTRACTS, EXPLORER_URL } from '@/config/contracts';
+import RefundSection from '@/components/RefundSection';
 
 // ============================================
 // PUBLIC CLIENT
@@ -27,7 +28,6 @@ const CONTRACTS = {
 
 // ============================================
 // TOKEN CONFIGURATION - STABLECOINS ONLY
-// Decimals are read from contract, not hardcoded
 // ============================================
 const TOKENS = {
   USDC: {
@@ -258,6 +258,13 @@ interface TokenBalance {
   decimals: number;
 }
 
+interface InvestorDetails {
+  amount: bigint;
+  amountUSD: bigint;
+  tokensMinted: bigint;
+  refunded: boolean;
+}
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -299,7 +306,6 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  // Load balances AND decimals from contract
   useEffect(() => {
     const loadBalances = async () => {
       if (!address) return;
@@ -308,22 +314,18 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
       
       for (const [key, token] of Object.entries(TOKENS)) {
         try {
-          // Read decimals from contract - NOT hardcoded
           const decimals = await publicClient.readContract({
             address: token.address,
             abi: ERC20ABI,
             functionName: 'decimals',
           });
           
-          // Read balance
           const balance = await publicClient.readContract({
             address: token.address,
             abi: ERC20ABI,
             functionName: 'balanceOf',
             args: [address],
           });
-          
-          console.log(`${key}: decimals=${decimals}, raw balance=${balance.toString()}, formatted=${formatUnits(balance, Number(decimals))}`);
           
           newBalances[key as TokenKey] = {
             raw: balance,
@@ -347,13 +349,11 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
     loadBalances();
   }, [address]);
 
-  // Investment calculations - project values are already converted to numbers
   const investAmountNum = parseFloat(investAmount) || 0;
   const minInvestmentUSD = project.minInvestment;
   const maxInvestmentUSD = project.maxInvestment;
   const fundingGoal = project.fundingGoal;
   
-  // For stablecoins: 1 token = $1, so amount needed = investAmountNum
   const requiredTokenAmount = investAmountNum;
   const userBalanceNum = parseFloat(balances[selectedToken].formatted) || 0;
   const hasEnoughBalance = userBalanceNum >= requiredTokenAmount;
@@ -372,28 +372,15 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
     try {
       const token = TOKENS[selectedToken];
       const tokenAddress = token.address;
-      
-      // Use decimals from balances state (read from contract)
       const tokenDecimals = balances[selectedToken].decimals;
       
       if (tokenDecimals === 0) {
         throw new Error('Token decimals not loaded. Please wait and try again.');
       }
       
-      // For stablecoins, investment amount in USD = token amount (1:1)
       const amountInTokenUnits = parseUnits(investAmountNum.toFixed(tokenDecimals), tokenDecimals);
       const projectIdBigInt = BigInt(project.id);
       
-      console.log('Investment details:', {
-        projectId: projectIdBigInt.toString(),
-        token: selectedToken,
-        tokenAddress,
-        decimals: tokenDecimals,
-        amount: amountInTokenUnits.toString(),
-        escrowVault: escrowVaultAddress,
-      });
-      
-      // Step 1: Check allowance
       const currentAllowance = await publicClient.readContract({
         address: tokenAddress,
         abi: ERC20ABI,
@@ -401,12 +388,7 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
         args: [address, escrowVaultAddress],
       });
       
-      console.log('Current allowance:', currentAllowance.toString());
-      
-      // Step 2: Approve if needed
       if (currentAllowance < amountInTokenUnits) {
-        console.log('Approving tokens...');
-        
         const approveHash = await writeContractAsync({
           address: tokenAddress,
           abi: ERC20ABI,
@@ -414,19 +396,14 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
           args: [escrowVaultAddress, amountInTokenUnits],
         });
         
-        console.log('Approval tx:', approveHash);
         const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
         
         if (approveReceipt.status === 'reverted') {
           throw new Error('Approval transaction failed');
         }
-        
-        console.log('Approval confirmed');
       }
       
-      // Step 3: Invest with token
       setStep('investing');
-      console.log('Calling investWithToken...');
       
       const investHash = await writeContractAsync({
         address: escrowVaultAddress,
@@ -435,22 +412,17 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
         args: [projectIdBigInt, tokenAddress, amountInTokenUnits],
       });
       
-      console.log('Investment tx:', investHash);
       setTxHash(investHash);
       setStep('confirming');
       
       const investReceipt = await publicClient.waitForTransactionReceipt({ hash: investHash });
       
-      // Check if transaction was successful
       if (investReceipt.status === 'reverted') {
-        throw new Error('Investment transaction reverted on-chain. Please check if you are KYC verified and the project is accepting investments.');
+        throw new Error('Investment transaction reverted on-chain.');
       }
-      
-      console.log('Investment confirmed! Status:', investReceipt.status);
       
       setStep('success');
       
-      // Refresh data after delay
       setTimeout(() => {
         onSuccess();
       }, 2000);
@@ -458,7 +430,6 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
     } catch (err: any) {
       console.error('Investment error:', err);
       
-      // Parse error message for better user feedback
       let errorMessage = err.message || 'Investment failed';
       
       if (errorMessage.includes('user rejected')) {
@@ -479,20 +450,13 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-2xl max-w-md w-full p-6 border border-gray-700">
-        {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-white">Invest in Project</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white text-2xl"
-          >
-            ×
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
 
         {step === 'input' && (
           <>
-            {/* Loading state */}
             {!balancesLoaded ? (
               <div className="text-center py-8">
                 <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
@@ -500,7 +464,6 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
               </div>
             ) : (
               <>
-                {/* Token Selection */}
                 <div className="mb-4">
                   <label className="block text-sm text-gray-400 mb-2">Select Stablecoin</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -528,7 +491,6 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
                   </div>
                 </div>
 
-                {/* Amount Input */}
                 <div className="mb-4">
                   <label className="block text-sm text-gray-400 mb-2">Investment Amount (USD)</label>
                   <div className="relative">
@@ -547,14 +509,11 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
                   </div>
                 </div>
 
-                {/* Summary */}
                 {investAmountNum > 0 && (
                   <div className="bg-gray-800 rounded-lg p-4 mb-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">You Pay</span>
-                      <span className="text-white">
-                        {formatNumber(requiredTokenAmount)} {selectedToken}
-                      </span>
+                      <span className="text-white">{formatNumber(requiredTokenAmount)} {selectedToken}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">USD Value</span>
@@ -564,29 +523,15 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
                       <span className="text-gray-400">Ownership Share</span>
                       <span className="text-green-400">≈ {ownershipShare.toFixed(4)}%</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Security Tokens</span>
-                      <span className="text-white">
-                        {formatNumber(investAmountNum)} {project.tokenInfo?.symbol || 'Tokens'}
-                      </span>
-                    </div>
                   </div>
                 )}
 
-                {/* Validation Messages */}
                 {investAmountNum > 0 && !hasEnoughBalance && (
                   <div className="text-red-400 text-sm mb-4">
-                    Insufficient {selectedToken} balance. You have {formatNumber(parseFloat(balances[selectedToken].formatted))} {selectedToken}
+                    Insufficient {selectedToken} balance.
                   </div>
                 )}
 
-                {investAmountNum > 0 && investAmountNum < minInvestmentUSD && (
-                  <div className="text-yellow-400 text-sm mb-4">
-                    Minimum investment is {formatUSD(minInvestmentUSD)}
-                  </div>
-                )}
-
-                {/* Invest Button */}
                 <button
                   onClick={handleInvest}
                   disabled={!isValidAmount || !hasEnoughBalance || isLoading}
@@ -596,20 +541,13 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
                       : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                   }`}
                 >
-                  {!address
-                    ? 'Connect Wallet'
-                    : !hasEnoughBalance
-                    ? `Insufficient ${selectedToken}`
-                    : !isValidAmount
-                    ? 'Enter Valid Amount'
-                    : `Invest ${formatUSD(investAmountNum)}`}
+                  {!address ? 'Connect Wallet' : !hasEnoughBalance ? `Insufficient ${selectedToken}` : !isValidAmount ? 'Enter Valid Amount' : `Invest ${formatUSD(investAmountNum)}`}
                 </button>
               </>
             )}
           </>
         )}
 
-        {/* Loading States */}
         {step === 'approving' && (
           <div className="text-center py-8">
             <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
@@ -628,17 +566,10 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
 
         {step === 'confirming' && (
           <div className="text-center py-8">
-            <div className="animate-pulse w-12 h-12 bg-yellow-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-              ⏳
-            </div>
+            <div className="animate-pulse w-12 h-12 bg-yellow-500 rounded-full mx-auto mb-4 flex items-center justify-center">⏳</div>
             <p className="text-white">Confirming Transaction...</p>
             {txHash && (
-              <a
-                href={`${EXPLORER_URL}/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 text-sm hover:underline"
-              >
+              <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-sm hover:underline">
                 View on Explorer
               </a>
             )}
@@ -647,20 +578,11 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
 
         {step === 'success' && (
           <div className="text-center py-8">
-            <div className="w-12 h-12 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">
-              ✓
-            </div>
+            <div className="w-12 h-12 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">✓</div>
             <p className="text-white text-lg font-semibold">Investment Successful!</p>
-            <p className="text-gray-400 text-sm mb-4">
-              You invested {formatUSD(investAmountNum)} in this project
-            </p>
+            <p className="text-gray-400 text-sm mb-4">You invested {formatUSD(investAmountNum)} in this project</p>
             {txHash && (
-              <a
-                href={`${EXPLORER_URL}/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
-              >
+              <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
                 View Transaction
               </a>
             )}
@@ -669,18 +591,10 @@ const InvestModal = ({ project, onClose, onSuccess }: InvestModalProps) => {
 
         {step === 'error' && (
           <div className="text-center py-8">
-            <div className="w-12 h-12 bg-red-500 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">
-              ✗
-            </div>
+            <div className="w-12 h-12 bg-red-500 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">✗</div>
             <p className="text-white text-lg font-semibold">Investment Failed</p>
             <p className="text-red-400 text-sm mb-4">{error}</p>
-            <button
-              onClick={() => {
-                setStep('input');
-                setError(null);
-              }}
-              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
-            >
+            <button onClick={() => { setStep('input'); setError(null); }} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
               Try Again
             </button>
           </div>
@@ -700,6 +614,8 @@ export default function ProjectDetailPage() {
   
   const [project, setProject] = useState<ProjectData | null>(null);
   const [userInvestment, setUserInvestment] = useState<bigint>(BigInt(0));
+  const [investorDetails, setInvestorDetails] = useState<InvestorDetails | null>(null);
+  const [refundsEnabled, setRefundsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInvestModal, setShowInvestModal] = useState(false);
@@ -711,19 +627,14 @@ export default function ProjectDetailPage() {
     setError(null);
     
     try {
-      console.log('Loading project ID:', projectId);
-      
-      // Read USD decimals from USDC contract (reference stablecoin)
       const usdDecimals = await publicClient.readContract({
         address: TOKENS.USDC.address,
         abi: ERC20ABI,
         functionName: 'decimals',
       });
       
-      console.log('USD decimals from USDC contract:', usdDecimals);
       const divisor = Math.pow(10, Number(usdDecimals));
       
-      // Load project data from NFT contract
       const data = await publicClient.readContract({
         address: CONTRACTS.RWAProjectNFT,
         abi: RWAProjectNFTABI,
@@ -731,9 +642,6 @@ export default function ProjectDetailPage() {
         args: [BigInt(projectId)],
       });
       
-      console.log('Raw project data from NFT:', data);
-      
-      // Load funding data from EscrowVault for accurate funding info
       let escrowFunding: any = null;
       try {
         escrowFunding = await publicClient.readContract({
@@ -742,24 +650,15 @@ export default function ProjectDetailPage() {
           functionName: 'getProjectFunding',
           args: [BigInt(projectId)],
         });
-        console.log('Raw escrow funding data:', escrowFunding);
+        setRefundsEnabled(escrowFunding.refundsEnabled);
       } catch (err) {
         console.log('Could not load escrow funding data:', err);
       }
       
-      // Use escrow data if available (more accurate), otherwise fall back to NFT data
       const fundingGoalRaw = escrowFunding ? escrowFunding.fundingGoal : data.fundingGoal;
       const totalRaisedRaw = escrowFunding ? escrowFunding.totalRaised : data.totalRaised;
       const minInvestmentRaw = escrowFunding ? escrowFunding.minInvestment : data.minInvestment;
       const maxInvestmentRaw = escrowFunding ? escrowFunding.maxInvestment : data.maxInvestment;
-      
-      console.log('Raw values:', {
-        fundingGoal: fundingGoalRaw.toString(),
-        totalRaised: totalRaisedRaw.toString(),
-        minInvestment: minInvestmentRaw.toString(),
-        maxInvestment: maxInvestmentRaw.toString(),
-        divisor,
-      });
       
       const projectData: ProjectData = {
         id: Number(data.id),
@@ -777,33 +676,14 @@ export default function ProjectDetailPage() {
         usdDecimals: Number(usdDecimals),
       };
       
-      console.log('Converted project data:', projectData);
-      
-      // Load token info if security token exists
       const tokenAddress = projectData.securityToken;
       if (tokenAddress && tokenAddress !== '0x0000000000000000000000000000000000000000') {
         try {
           const [name, symbol, tokenDecimals, totalSupply] = await Promise.all([
-            publicClient.readContract({
-              address: tokenAddress as `0x${string}`,
-              abi: RWASecurityTokenABI,
-              functionName: 'name',
-            }),
-            publicClient.readContract({
-              address: tokenAddress as `0x${string}`,
-              abi: RWASecurityTokenABI,
-              functionName: 'symbol',
-            }),
-            publicClient.readContract({
-              address: tokenAddress as `0x${string}`,
-              abi: RWASecurityTokenABI,
-              functionName: 'decimals',
-            }),
-            publicClient.readContract({
-              address: tokenAddress as `0x${string}`,
-              abi: RWASecurityTokenABI,
-              functionName: 'totalSupply',
-            }),
+            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
+            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
+            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'decimals' }),
+            publicClient.readContract({ address: tokenAddress as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'totalSupply' }),
           ]);
           
           projectData.tokenInfo = {
@@ -817,7 +697,6 @@ export default function ProjectDetailPage() {
         }
       }
       
-      // Load user investment from escrow vault
       if (address) {
         try {
           const investment = await publicClient.readContract({
@@ -827,10 +706,25 @@ export default function ProjectDetailPage() {
             args: [BigInt(projectId), address],
           });
           setUserInvestment(investment);
-          console.log('User investment (raw):', investment.toString());
+          
+          // Fetch detailed investor info for refunds
+          const details = await publicClient.readContract({
+            address: CONTRACTS.EscrowVault,
+            abi: EscrowVaultABI,
+            functionName: 'getInvestorDetails',
+            args: [BigInt(projectId), address],
+          });
+          
+          setInvestorDetails({
+            amount: details[0],
+            amountUSD: details[1],
+            tokensMinted: details[2],
+            refunded: details[3],
+          });
         } catch (err) {
           console.log('Could not load user investment:', err);
           setUserInvestment(BigInt(0));
+          setInvestorDetails(null);
         }
       }
       
@@ -867,16 +761,13 @@ export default function ProjectDetailPage() {
           <div className="bg-red-500/20 border border-red-500 rounded-lg p-6 text-center">
             <h2 className="text-xl font-bold text-red-400 mb-2">Error Loading Project</h2>
             <p className="text-gray-300">{error || 'Project not found'}</p>
-            <Link href="/projects" className="text-blue-400 hover:underline mt-4 inline-block">
-              ← Back to Projects
-            </Link>
+            <Link href="/projects" className="text-blue-400 hover:underline mt-4 inline-block">← Back to Projects</Link>
           </div>
         </div>
       </div>
     );
   }
 
-  // Values are already converted to proper numbers in loadProject
   const fundingGoal = project.fundingGoal;
   const totalRaised = project.totalRaised;
   const minInvestment = project.minInvestment;
@@ -884,10 +775,9 @@ export default function ProjectDetailPage() {
   const progress = fundingGoal > 0 ? Math.min((totalRaised / fundingGoal) * 100, 100) : 0;
   const deadline = new Date(Number(project.deadline) * 1000);
   
-  // Allow investment for Pending (1) or Active (2) status
   const isActive = (project.status === 1 || project.status === 2) && deadline > new Date();
+  const isCancelled = project.status === 4 || project.status === 5;
   
-  // User investment uses same decimals as USD (from USDC)
   const divisor = Math.pow(10, project.usdDecimals);
   const userInvestmentUSD = Number(userInvestment) / divisor;
 
@@ -896,10 +786,8 @@ export default function ProjectDetailPage() {
     1: 'Pending',
     2: 'Active',
     3: 'Funded',
-    4: 'In Progress',
-    5: 'Completed',
-    6: 'Cancelled',
-    7: 'Failed',
+    4: 'Cancelled',
+    5: 'Failed',
   };
 
   const statusColors: Record<number, string> = {
@@ -907,10 +795,8 @@ export default function ProjectDetailPage() {
     1: 'bg-yellow-500',
     2: 'bg-green-500',
     3: 'bg-blue-500',
-    4: 'bg-purple-500',
-    5: 'bg-green-600',
-    6: 'bg-red-500',
-    7: 'bg-red-600',
+    4: 'bg-red-500',
+    5: 'bg-red-600',
   };
 
   return (
@@ -918,13 +804,9 @@ export default function ProjectDetailPage() {
       <Header />
       
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* Back Link */}
-        <Link href="/projects" className="text-blue-400 hover:underline mb-6 inline-block">
-          ← Back to Projects
-        </Link>
+        <Link href="/projects" className="text-blue-400 hover:underline mb-6 inline-block">← Back to Projects</Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Project Header */}
             <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
@@ -945,21 +827,15 @@ export default function ProjectDetailPage() {
                 )}
               </div>
               
-              <p className="text-gray-300 mb-6">
-                {project.metadata?.description || 'No description available'}
-              </p>
+              <p className="text-gray-300 mb-6">{project.metadata?.description || 'No description available'}</p>
 
-              {/* Funding Progress */}
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Funding Progress</span>
                   <span className="text-white">{progress.toFixed(1)}%</span>
                 </div>
                 <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-                    style={{ width: `${Math.min(progress, 100)}%` }}
-                  />
+                  <div className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500" style={{ width: `${Math.min(progress, 100)}%` }} />
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">{formatUSD(totalRaised)} raised</span>
@@ -967,6 +843,17 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
             </div>
+
+            {/* Refund Section - Shows for cancelled/failed projects */}
+            {isCancelled && investorDetails && (
+              <RefundSection
+                projectId={project.id}
+                escrowVault={CONTRACTS.EscrowVault}
+                projectStatus={project.status}
+                investorDetails={investorDetails}
+                refundsEnabled={refundsEnabled}
+              />
+            )}
 
             {/* Project Details */}
             <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
@@ -986,12 +873,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div>
                   <div className="text-gray-400 text-sm">Project Owner</div>
-                  <a
-                    href={`${EXPLORER_URL}/address/${project.owner}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:underline font-mono text-sm"
-                  >
+                  <a href={`${EXPLORER_URL}/address/${project.owner}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-mono text-sm">
                     {project.owner.slice(0, 6)}...{project.owner.slice(-4)}
                   </a>
                 </div>
@@ -1004,23 +886,13 @@ export default function ProjectDetailPage() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400">Security Token</span>
-                  <a
-                    href={`${EXPLORER_URL}/address/${project.securityToken}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:underline font-mono text-sm"
-                  >
+                  <a href={`${EXPLORER_URL}/address/${project.securityToken}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-mono text-sm">
                     {project.securityToken.slice(0, 10)}...{project.securityToken.slice(-8)}
                   </a>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400">Escrow Vault</span>
-                  <a
-                    href={`${EXPLORER_URL}/address/${CONTRACTS.EscrowVault}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:underline font-mono text-sm"
-                  >
+                  <a href={`${EXPLORER_URL}/address/${CONTRACTS.EscrowVault}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-mono text-sm">
                     {CONTRACTS.EscrowVault.slice(0, 10)}...{CONTRACTS.EscrowVault.slice(-8)}
                   </a>
                 </div>
@@ -1032,57 +904,70 @@ export default function ProjectDetailPage() {
           <div className="space-y-6">
             {/* Investment Card */}
             <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
-              <h2 className="text-lg font-semibold text-white mb-4">Invest Now</h2>
+              <h2 className="text-lg font-semibold text-white mb-4">
+                {isCancelled ? 'Project Cancelled' : 'Invest Now'}
+              </h2>
               
               {userInvestmentUSD > 0 && (
-                <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4 mb-4">
-                  <div className="text-green-400 text-sm">Your Investment</div>
+                <div className={`${isCancelled ? 'bg-red-500/20 border-red-500/50' : 'bg-green-500/20 border-green-500/50'} border rounded-lg p-4 mb-4`}>
+                  <div className={`${isCancelled ? 'text-red-400' : 'text-green-400'} text-sm`}>Your Investment</div>
                   <div className="text-white text-xl font-bold">{formatUSD(userInvestmentUSD)}</div>
+                  {isCancelled && investorDetails && !investorDetails.refunded && refundsEnabled && (
+                    <div className="text-yellow-400 text-xs mt-1">Refund available</div>
+                  )}
                 </div>
               )}
               
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Accepted</span>
-                  <span className="text-white">USDC, USDT</span>
+              {!isCancelled && (
+                <>
+                  <div className="space-y-3 mb-6">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Accepted</span>
+                      <span className="text-white">USDC, USDT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Min Investment</span>
+                      <span className="text-white">{formatUSD(minInvestment)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Deadline</span>
+                      <span className="text-white">{deadline.toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => setShowInvestModal(true)}
+                    disabled={!isConnected || !isActive}
+                    className={`w-full py-3 rounded-lg font-semibold ${
+                      isConnected && isActive
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {!isConnected ? 'Connect Wallet to Invest' : !isActive ? 'Investment Closed' : 'Invest with Stablecoin'}
+                  </button>
+                  
+                  <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-gray-800">
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <span className="text-2xl">💵</span>
+                      <span className="text-sm">USDC</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <span className="text-2xl">💲</span>
+                      <span className="text-sm">USDT</span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {isCancelled && (
+                <div className="text-center py-4">
+                  <p className="text-red-400 text-sm">This project has been cancelled.</p>
+                  {investorDetails && investorDetails.amountUSD > 0n && !investorDetails.refunded && refundsEnabled && (
+                    <p className="text-yellow-400 text-sm mt-2">You can claim your refund above.</p>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Min Investment</span>
-                  <span className="text-white">{formatUSD(minInvestment)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Deadline</span>
-                  <span className="text-white">{deadline.toLocaleDateString()}</span>
-                </div>
-              </div>
-              
-              <button
-                onClick={() => setShowInvestModal(true)}
-                disabled={!isConnected || !isActive}
-                className={`w-full py-3 rounded-lg font-semibold ${
-                  isConnected && isActive
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                {!isConnected
-                  ? 'Connect Wallet to Invest'
-                  : !isActive
-                  ? 'Investment Closed'
-                  : 'Invest with Stablecoin'}
-              </button>
-              
-              {/* Accepted Currencies */}
-              <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-gray-800">
-                <div className="flex items-center gap-2 text-gray-400">
-                  <span className="text-2xl">💵</span>
-                  <span className="text-sm">USDC</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-400">
-                  <span className="text-2xl">💲</span>
-                  <span className="text-sm">USDT</span>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Token Info */}
@@ -1111,7 +996,6 @@ export default function ProjectDetailPage() {
         </div>
       </main>
 
-      {/* Invest Modal */}
       {showInvestModal && project && (
         <InvestModal
           project={project}

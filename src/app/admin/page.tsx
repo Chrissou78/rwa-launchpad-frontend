@@ -1,16 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { createPublicClient, http, parseAbi } from 'viem';
+import { polygonAmoy } from 'viem/chains';
 import { CONTRACTS } from '@/config/contracts';
 import { IdentityRegistryABI, RWALaunchpadFactoryABI } from '@/config/abis';
 
-type AdminTab = 'overview' | 'identity' | 'factory' | 'kyc';
+type AdminTab = 'overview' | 'identity' | 'factory' | 'kyc' | 'projects';
+
+const PROJECT_NFT = CONTRACTS.RWAProjectNFT;
+const STATUS_NAMES = ['Pending', 'Active', 'Funded', 'Completed', 'Cancelled', 'Failed'];
+const STATUS_COLORS: Record<number, string> = {
+  0: 'bg-gray-500/20 text-gray-400',
+  1: 'bg-blue-500/20 text-blue-400',
+  2: 'bg-green-500/20 text-green-400',
+  3: 'bg-purple-500/20 text-purple-400',
+  4: 'bg-red-500/20 text-red-400',
+  5: 'bg-orange-500/20 text-orange-400',
+};
+
+const projectNftAbi = parseAbi([
+  'function totalProjects() view returns (uint256)',
+  'function getProject(uint256) view returns (tuple(uint256 id, address owner, string metadataURI, uint256 fundingGoal, uint256 totalRaised, uint256 minInvestment, uint256 maxInvestment, uint256 deadline, uint8 status, address securityToken, address escrowVault, uint256 createdAt, uint256 completedAt, bool transferable))',
+]);
+
+interface Project {
+  id: number;
+  owner: string;
+  fundingGoal: number;
+  totalRaised: number;
+  status: number;
+  escrowVault: string;
+  deadline: number;
+}
 
 export default function AdminPage() {
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
   return (
@@ -22,57 +50,28 @@ export default function AdminPage() {
 
         {!isConnected ? (
           <div className="text-center py-12 bg-gray-800 rounded-lg">
-            <p className="text-gray-400 text-lg">
-              Connect your wallet to access admin functions
-            </p>
+            <p className="text-gray-400 text-lg">Connect your wallet to access admin functions</p>
           </div>
         ) : (
           <div>
-            {/* Tabs */}
             <div className="flex flex-wrap gap-2 mb-8">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'overview'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                Overview
-              </button>
-              <button
-                onClick={() => setActiveTab('kyc')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'kyc'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                KYC Management
-              </button>
-              <button
-                onClick={() => setActiveTab('identity')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'identity'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                Identity Registry
-              </button>
-              <button
-                onClick={() => setActiveTab('factory')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'factory'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                Factory Settings
-              </button>
+              {(['overview', 'projects', 'kyc', 'identity', 'factory'] as AdminTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors capitalize ${
+                    activeTab === tab
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  {tab === 'kyc' ? 'KYC Management' : tab === 'identity' ? 'Identity Registry' : tab === 'factory' ? 'Factory Settings' : tab === 'projects' ? 'Projects' : tab}
+                </button>
+              ))}
             </div>
 
             {activeTab === 'overview' && <AdminOverview onNavigate={setActiveTab} />}
+            {activeTab === 'projects' && <ProjectManagement />}
             {activeTab === 'kyc' && <KYCManagementPanel />}
             {activeTab === 'identity' && <IdentityManagement />}
             {activeTab === 'factory' && <FactorySettings />}
@@ -86,6 +85,25 @@ export default function AdminPage() {
 function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminTab) => void }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Project Management Card */}
+      <div 
+        onClick={() => onNavigate('projects')}
+        className="bg-gray-800 rounded-xl p-6 cursor-pointer hover:bg-gray-750 hover:ring-2 hover:ring-blue-500 transition-all"
+      >
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-12 h-12 bg-red-600/20 rounded-lg flex items-center justify-center">
+            <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Project Management</h3>
+            <p className="text-gray-400 text-sm">Cancel & refund projects</p>
+          </div>
+        </div>
+        <p className="text-gray-500 text-sm">Cancel projects and enable refunds for investors.</p>
+      </div>
+
       {/* KYC Management Card */}
       <div 
         onClick={() => onNavigate('kyc')}
@@ -102,9 +120,7 @@ function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminTab) => void }) 
             <p className="text-gray-400 text-sm">Manage user verifications</p>
           </div>
         </div>
-        <p className="text-gray-500 text-sm">
-          View all users, approve/reject KYC submissions, revoke access, and monitor verification statistics.
-        </p>
+        <p className="text-gray-500 text-sm">View all users, approve/reject KYC submissions, and monitor verification statistics.</p>
       </div>
 
       {/* Identity Registry Card */}
@@ -123,9 +139,7 @@ function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminTab) => void }) 
             <p className="text-gray-400 text-sm">On-chain identity management</p>
           </div>
         </div>
-        <p className="text-gray-500 text-sm">
-          Register and delete on-chain identities, manage country codes and compliance.
-        </p>
+        <p className="text-gray-500 text-sm">Register and delete on-chain identities, manage country codes and compliance.</p>
       </div>
 
       {/* Factory Settings Card */}
@@ -145,37 +159,242 @@ function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminTab) => void }) 
             <p className="text-gray-400 text-sm">Platform configuration</p>
           </div>
         </div>
-        <p className="text-gray-500 text-sm">
-          View and manage factory fees, platform settings, and contract addresses.
-        </p>
+        <p className="text-gray-500 text-sm">View and manage factory fees, platform settings, and contract addresses.</p>
       </div>
 
       {/* Quick Links */}
       <div className="bg-gray-800 rounded-xl p-6 md:col-span-2 lg:col-span-3">
         <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
         <div className="flex flex-wrap gap-3">
-          <Link
-            href="/admin/kyc"
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-          >
+          <Link href="/admin/kyc" className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
             Open Full KYC Dashboard →
           </Link>
-          <Link
-            href="/projects"
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
-          >
+          <Link href="/projects" className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors">
             View Projects
           </Link>
-          <a
-            href={`https://amoy.polygonscan.com/address/${CONTRACTS.factory}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
-          >
+          <a href={`https://amoy.polygonscan.com/address/${CONTRACTS.factory}`} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors">
             View on Polygonscan ↗
           </a>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ProjectManagement() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [result, setResult] = useState<any>(null);
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  const fetchProjects = async () => {
+    try {
+      const client = createPublicClient({
+        chain: polygonAmoy,
+        transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      });
+
+      const total = await client.readContract({
+        address: PROJECT_NFT as `0x${string}`,
+        abi: projectNftAbi,
+        functionName: 'totalProjects',
+      }) as bigint;
+
+      const projectList: Project[] = [];
+
+      for (let i = 1; i <= Number(total); i++) {
+        const data = await client.readContract({
+          address: PROJECT_NFT as `0x${string}`,
+          abi: projectNftAbi,
+          functionName: 'getProject',
+          args: [BigInt(i)],
+        }) as any;
+
+        projectList.push({
+          id: i,
+          owner: data.owner,
+          fundingGoal: Number(data.fundingGoal) / 1e6,
+          totalRaised: Number(data.totalRaised) / 1e6,
+          status: Number(data.status),
+          escrowVault: data.escrowVault,
+          deadline: Number(data.deadline),
+        });
+      }
+
+      setProjects(projectList);
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openCancelModal = (project: Project) => {
+    setSelectedProject(project);
+    setCancelReason('Project cancelled by admin');
+    setShowCancelModal(true);
+    setResult(null);
+  };
+
+  const handleCancel = async () => {
+    if (!selectedProject) return;
+
+    setCancellingId(selectedProject.id);
+    setResult(null);
+
+    try {
+      const response = await fetch(`/api/admin/projects/${selectedProject.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: cancelReason,
+          enableRefunds: true,
+        }),
+      });
+
+      const data = await response.json();
+      setResult(data);
+
+      if (data.success) {
+        await fetchProjects();
+      }
+    } catch (error: any) {
+      setResult({ success: false, error: error.message });
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold text-white">Project Management</h2>
+        <button onClick={fetchProjects} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm">
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-16">
+          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-gray-400 mt-4">Loading projects...</p>
+        </div>
+      ) : (
+        <div className="bg-gray-800 rounded-xl overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-700">
+              <tr>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">ID</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Status</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Raised</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Goal</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Deadline</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {projects.map((project) => (
+                <tr key={project.id} className="hover:bg-gray-750">
+                  <td className="px-6 py-4 text-white font-mono">#{project.id}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[project.status]}`}>
+                      {STATUS_NAMES[project.status]}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-white">${project.totalRaised.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-gray-400">${project.fundingGoal.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-gray-400">{new Date(project.deadline * 1000).toLocaleDateString()}</td>
+                  <td className="px-6 py-4">
+                    {project.status !== 4 && project.status !== 3 ? (
+                      <button
+                        onClick={() => openCancelModal(project)}
+                        disabled={cancellingId === project.id}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white text-sm rounded-lg transition"
+                      >
+                        {cancellingId === project.id ? 'Cancelling...' : 'Cancel & Refund'}
+                      </button>
+                    ) : (
+                      <span className="text-gray-500 text-sm">{project.status === 4 ? 'Cancelled' : 'Completed'}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Cancel Modal */}
+      {showCancelModal && selectedProject && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-lg w-full mx-4">
+            <h2 className="text-xl font-bold text-white mb-4">Cancel Project #{selectedProject.id}</h2>
+
+            <div className="space-y-4 mb-6">
+              <div className="bg-gray-700 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">Total Raised</p>
+                <p className="text-white text-lg font-bold">${selectedProject.totalRaised.toLocaleString()}</p>
+              </div>
+
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">Cancellation Reason</label>
+                <input
+                  type="text"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white"
+                  placeholder="Enter reason..."
+                />
+              </div>
+
+              <div className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                <span className="text-yellow-500">⚠️</span>
+                <div>
+                  <p className="text-yellow-400 font-medium">Warning</p>
+                  <p className="text-yellow-400/80 text-sm">This will cancel the project and enable refunds. This action cannot be undone.</p>
+                </div>
+              </div>
+
+              {result && (
+                <div className={`rounded-lg p-4 ${result.success ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                  {result.success ? (
+                    <div>
+                      <p className="text-green-400 font-medium">Project Cancelled Successfully!</p>
+                      <p className="text-green-400/80 text-sm mt-1">
+                        {result.refundsEnabled ? 'Refunds have been enabled.' : result.refundReason}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-red-400">{result.error}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowCancelModal(false)} className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition">
+                Close
+              </button>
+              {!result?.success && (
+                <button
+                  onClick={handleCancel}
+                  disabled={cancellingId !== null}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded-lg transition"
+                >
+                  {cancellingId !== null ? 'Processing...' : 'Confirm Cancel'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -191,8 +410,7 @@ function KYCManagementPanel() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Fetch stats on mount
-  useState(() => {
+  useEffect(() => {
     fetch('/api/kyc/admin/users?limit=1')
       .then(res => res.json())
       .then(data => {
@@ -202,11 +420,10 @@ function KYCManagementPanel() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  });
+  }, []);
 
   return (
     <div className="space-y-6">
-      {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="bg-gray-800 rounded-lg p-4">
           <p className="text-gray-400 text-sm">Total Users</p>
@@ -234,33 +451,23 @@ function KYCManagementPanel() {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="bg-gray-800 rounded-xl p-6">
         <h3 className="text-xl font-semibold text-white mb-4">KYC Administration</h3>
-        <p className="text-gray-400 mb-6">
-          Manage user KYC submissions, approve or reject verifications, and monitor compliance status.
-        </p>
+        <p className="text-gray-400 mb-6">Manage user KYC submissions, approve or reject verifications, and monitor compliance status.</p>
         
         <div className="flex flex-wrap gap-4">
-          <Link
-            href="/admin/kyc"
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-          >
+          <Link href="/admin/kyc" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
             Open Full KYC Dashboard
           </Link>
           
           {stats.pendingManualReview > 0 && (
-            <Link
-              href="/admin/kyc?filter=manual_review"
-              className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors"
-            >
+            <Link href="/admin/kyc?filter=manual_review" className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors">
               Review Pending ({stats.pendingManualReview})
             </Link>
           )}
         </div>
       </div>
 
-      {/* Quick Info */}
       <div className="bg-gray-800 rounded-xl p-6">
         <h3 className="text-lg font-semibold text-white mb-4">KYC Tiers</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -269,7 +476,7 @@ function KYCManagementPanel() {
               <span className="text-amber-500 text-lg">🥉</span>
               <span className="text-amber-500 font-medium">Bronze</span>
             </div>
-            <p className="text-gray-400 text-sm">Up to $1,000</p>
+            <p className="text-gray-400 text-sm">Up to $10,000</p>
             <p className="text-gray-500 text-xs mt-1">Email + Wallet</p>
           </div>
           <div className="p-4 bg-gray-700/50 rounded-lg">
@@ -277,7 +484,7 @@ function KYCManagementPanel() {
               <span className="text-gray-300 text-lg">🥈</span>
               <span className="text-gray-300 font-medium">Silver</span>
             </div>
-            <p className="text-gray-400 text-sm">Up to $10,000</p>
+            <p className="text-gray-400 text-sm">Up to $100,000</p>
             <p className="text-gray-500 text-xs mt-1">+ ID Document</p>
           </div>
           <div className="p-4 bg-gray-700/50 rounded-lg">
@@ -285,7 +492,7 @@ function KYCManagementPanel() {
               <span className="text-yellow-400 text-lg">🥇</span>
               <span className="text-yellow-400 font-medium">Gold</span>
             </div>
-            <p className="text-gray-400 text-sm">Up to $100,000</p>
+            <p className="text-gray-400 text-sm">Up to $1,000,000</p>
             <p className="text-gray-500 text-xs mt-1">+ Selfie + Liveness</p>
           </div>
           <div className="p-4 bg-gray-700/50 rounded-lg">
@@ -337,9 +544,7 @@ function IdentityManagement() {
   return (
     <div className="space-y-6">
       <div className="bg-gray-800 rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-white mb-4">
-          Register Identity
-        </h2>
+        <h2 className="text-xl font-semibold text-white mb-4">Register Identity</h2>
 
         <div className="space-y-4">
           <div>
@@ -347,9 +552,7 @@ function IdentityManagement() {
             <input
               type="text"
               value={registerData.account}
-              onChange={(e) =>
-                setRegisterData({ ...registerData, account: e.target.value })
-              }
+              onChange={(e) => setRegisterData({ ...registerData, account: e.target.value })}
               placeholder="0x..."
               className="w-full bg-gray-700 text-white rounded-lg px-4 py-2"
             />
@@ -360,9 +563,7 @@ function IdentityManagement() {
             <input
               type="text"
               value={registerData.identity}
-              onChange={(e) =>
-                setRegisterData({ ...registerData, identity: e.target.value })
-              }
+              onChange={(e) => setRegisterData({ ...registerData, identity: e.target.value })}
               placeholder="0x..."
               className="w-full bg-gray-700 text-white rounded-lg px-4 py-2"
             />
@@ -372,9 +573,7 @@ function IdentityManagement() {
             <label className="block text-gray-400 mb-2">Country Code</label>
             <select
               value={registerData.country}
-              onChange={(e) =>
-                setRegisterData({ ...registerData, country: e.target.value })
-              }
+              onChange={(e) => setRegisterData({ ...registerData, country: e.target.value })}
               className="w-full bg-gray-700 text-white rounded-lg px-4 py-2"
             >
               <option value="840">United States (840)</option>
@@ -440,46 +639,29 @@ function FactorySettings() {
   return (
     <div className="space-y-6">
       <div className="bg-gray-800 rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-white mb-4">
-          Factory Status
-        </h2>
+        <h2 className="text-xl font-semibold text-white mb-4">Factory Status</h2>
 
         <div className="space-y-4">
           <div className="flex justify-between items-center py-3 border-b border-gray-700">
             <span className="text-gray-400">Factory Address</span>
-            <a
-              href={`https://amoy.polygonscan.com/address/${CONTRACTS.factory}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-500 hover:text-blue-400 font-mono"
-            >
+            <a href={`https://amoy.polygonscan.com/address/${CONTRACTS.factory}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-400 font-mono">
               {CONTRACTS.factory.slice(0, 6)}...{CONTRACTS.factory.slice(-4)}
             </a>
           </div>
 
           <div className="flex justify-between items-center py-3 border-b border-gray-700">
             <span className="text-gray-400">Creation Fee</span>
-            <span className="text-white">
-              {creationFee ? `${(Number(creationFee) / 1e18).toFixed(4)} MATIC` : 'Loading...'}
-            </span>
+            <span className="text-white">{creationFee ? `${(Number(creationFee) / 1e18).toFixed(4)} MATIC` : 'Loading...'}</span>
           </div>
 
           <div className="flex justify-between items-center py-3 border-b border-gray-700">
             <span className="text-gray-400">Platform Fee</span>
-            <span className="text-white">
-              {platformFee !== undefined ? `${Number(platformFee) / 100}%` : 'Loading...'}
-            </span>
+            <span className="text-white">{platformFee !== undefined ? `${Number(platformFee) / 100}%` : 'Loading...'}</span>
           </div>
 
           <div className="flex justify-between items-center py-3">
             <span className="text-gray-400">Status</span>
-            <span
-              className={`px-3 py-1 rounded-full text-sm font-medium ${
-                isPaused
-                  ? 'bg-red-900 text-red-300'
-                  : 'bg-green-900 text-green-300'
-              }`}
-            >
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${isPaused ? 'bg-red-900 text-red-300' : 'bg-green-900 text-green-300'}`}>
               {isPaused ? 'Paused' : 'Active'}
             </span>
           </div>
@@ -487,22 +669,13 @@ function FactorySettings() {
       </div>
 
       <div className="bg-gray-800 rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-white mb-4">
-          Contract Addresses
-        </h2>
+        <h2 className="text-xl font-semibold text-white mb-4">Contract Addresses</h2>
 
         <div className="space-y-2 text-sm">
           {Object.entries(CONTRACTS).map(([name, address]) => (
             <div key={name} className="flex justify-between py-2">
-              <span className="text-gray-400 capitalize">
-                {name.replace(/([A-Z])/g, ' $1').trim()}
-              </span>
-              <a
-                href={`https://amoy.polygonscan.com/address/${address}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:text-blue-400 font-mono"
-              >
+              <span className="text-gray-400 capitalize">{name.replace(/([A-Z])/g, ' $1').trim()}</span>
+              <a href={`https://amoy.polygonscan.com/address/${address}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-400 font-mono">
                 {address.slice(0, 6)}...{address.slice(-4)}
               </a>
             </div>
