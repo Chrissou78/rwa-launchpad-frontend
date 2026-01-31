@@ -189,7 +189,7 @@ function ProjectCard({ project }: { project: Project }) {
               <span className="text-gray-400">Raised</span>
               <span className="text-white font-medium">
                 ${formatUSDC(project.totalRaised)} 
-                <span className="text-gray-500"> / ${formatUSDC(project.fundingGoal)}</span>
+                <span className="text-gray-500"> / ${formatUSD(project.fundingGoal)}</span>
               </span>
             </div>
             <div className="w-full bg-gray-700 rounded-full h-2">
