@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { createPublicClient, http } from 'viem';
+import { polygonAmoy } from 'viem/chains';
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
 
@@ -8,8 +9,12 @@ export async function GET() {
   let blockNumber = 0;
 
   try {
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
-    blockNumber = await provider.getBlockNumber();
+    const client = createPublicClient({
+      chain: polygonAmoy,
+      transport: http(RPC_URL),
+    });
+    const block = await client.getBlockNumber();
+    blockNumber = Number(block);
     blockchainConnected = true;
   } catch (error) {
     console.error('Blockchain connection error:', error);
