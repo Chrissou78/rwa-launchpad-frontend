@@ -614,33 +614,49 @@ export default function ProjectDetailPage() {
       const p = projectData as unknown as Project;
       setProject(p);
 
-      // Load metadata
-      if (p.metadataURI) {
-        try {
-          const url = convertIPFSUrl(p.metadataURI);
-          const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-          if (res.ok) {
-            const meta = await res.json();
-            setMetadata(meta);
+      // Skip loading metadata/token info for cancelled (6) or failed (7) projects
+      const isCancelledOrFailed = p.status === 6 || p.status === 7;
+
+      if (!isCancelledOrFailed) {
+        // Load metadata
+        if (p.metadataURI) {
+          try {
+            let url = p.metadataURI;
+            if (url.startsWith('ipfs://')) {
+              const hash = url.replace('ipfs://', '');
+              if (hash.length >= 46) {
+                url = `https://gateway.pinata.cloud/ipfs/${hash}`;
+              } else {
+                url = '';
+              }
+            }
+            
+            if (url) {
+              const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+              if (res.ok) {
+                const meta = await res.json();
+                setMetadata(meta);
+              }
+            }
+          } catch (err) {
+            console.error('Error loading metadata:', err);
           }
-        } catch (err) {
-          console.error('Error loading metadata:', err);
+        }
+
+        // Load token info
+        if (p.securityToken && p.securityToken !== ZERO_ADDRESS) {
+          try {
+            const [name, symbol] = await Promise.all([
+              publicClient.readContract({ address: p.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
+              publicClient.readContract({ address: p.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
+            ]);
+            setTokenName(name as string);
+            setTokenSymbol(symbol as string);
+          } catch {}
         }
       }
 
-      // Load token info
-      if (p.securityToken && p.securityToken !== ZERO_ADDRESS) {
-        try {
-          const [name, symbol] = await Promise.all([
-            publicClient.readContract({ address: p.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
-            publicClient.readContract({ address: p.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
-          ]);
-          setTokenName(name as string);
-          setTokenSymbol(symbol as string);
-        } catch {}
-      }
-
-      // Load escrow data
+      // Still load escrow data for cancelled projects (needed for refunds)
       if (p.escrowVault && p.escrowVault !== ZERO_ADDRESS) {
         try {
           const funding = await publicClient.readContract({

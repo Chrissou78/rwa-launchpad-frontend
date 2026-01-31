@@ -87,9 +87,17 @@ interface Project {
   tokenSymbol?: string;
 }
 
-// Contract enum: 0=Pending, 1=Active, 2=Funded, 3=Completed, 4=Cancelled
+// Contract enum from IRWAProjectNFT.sol:
+// 0=Draft, 1=Pending, 2=Active, 3=Funded, 4=InProgress, 5=Completed, 6=Cancelled, 7=Failed
 const STATUS_LABELS = ['Draft', 'Pending', 'Active', 'Funded', 'In Progress', 'Completed', 'Cancelled', 'Failed'];
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+// Check if project is archived (cancelled/failed AND fully refunded)
+const isProjectArchived = (project: Project): boolean => {
+  const isCancelledOrFailed = project.status === 6 || project.status === 7;
+  const hasNoFundsLeft = project.totalRaised === 0n;
+  return isCancelledOrFailed && hasNoFundsLeft;
+};
 
 // Format USD - fundingGoal is PLAIN USD (no decimals!)
 const formatUSD = (amount: bigint): string => {
@@ -111,8 +119,20 @@ const formatUSDC = (amount: bigint): string => {
   });
 };
 
+// Check if IPFS hash is valid (real hashes are 46+ characters)
+const isValidIPFSHash = (uri: string): boolean => {
+  if (!uri) return false;
+  if (uri.startsWith('ipfs://')) {
+    const hash = uri.replace('ipfs://', '');
+    return hash.length >= 46;
+  }
+  return uri.startsWith('http');
+};
+
 function ProjectCard({ project }: { project: Project }) {
   const isCancelled = project.status === 6;
+  const isFailed = project.status === 7;
+  const isArchived = isProjectArchived(project);
   
   // fundingGoal is plain USD, totalRaised is USDC (6 decimals)
   const fundingGoalNum = Number(project.fundingGoal);
@@ -128,12 +148,30 @@ function ProjectCard({ project }: { project: Project }) {
   // Safe status label lookup
   const statusLabel = STATUS_LABELS[project.status] ?? `Status ${project.status}`;
 
+  // Status color mapping
+  const getStatusColor = () => {
+    if (isCancelled || isFailed) return 'bg-red-500/20 text-red-400 border border-red-500/30';
+    switch (project.status) {
+      case 0: return 'bg-gray-500/20 text-gray-400 border border-gray-500/30'; // Draft
+      case 1: return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'; // Pending
+      case 2: return 'bg-blue-500/20 text-blue-400 border border-blue-500/30'; // Active
+      case 3: return 'bg-green-500/20 text-green-400 border border-green-500/30'; // Funded
+      case 4: return 'bg-purple-500/20 text-purple-400 border border-purple-500/30'; // InProgress
+      case 5: return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'; // Completed
+      default: return 'bg-gray-500/20 text-gray-400 border border-gray-500/30';
+    }
+  };
+
   return (
     <Link href={`/projects/${project.id}`}>
-      <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden hover:border-gray-600 transition-all hover:shadow-lg hover:shadow-blue-500/10 group">
+      <div className={`bg-gray-800 rounded-xl border overflow-hidden transition-all group ${
+        isArchived 
+          ? 'border-gray-800 opacity-60 hover:opacity-80' 
+          : 'border-gray-700 hover:border-gray-600 hover:shadow-lg hover:shadow-blue-500/10'
+      }`}>
         {/* Banner/Image */}
-        <div className="h-40 bg-gradient-to-br from-blue-600/20 to-purple-600/20 relative">
-          {project.metadata?.image ? (
+        <div className={`h-40 bg-gradient-to-br from-blue-600/20 to-purple-600/20 relative ${isArchived ? 'grayscale' : ''}`}>
+          {project.metadata?.image && isValidIPFSHash(project.metadata.image) ? (
             <Image
               src={project.metadata.image.startsWith('ipfs://') 
                 ? `https://gateway.pinata.cloud/ipfs/${project.metadata.image.replace('ipfs://', '')}`
@@ -153,16 +191,15 @@ function ProjectCard({ project }: { project: Project }) {
           
           {/* Status Badge */}
           <div className="absolute top-3 right-3">
-            <span className={`px-3 py-1 text-xs font-medium rounded-full ${
-              isCancelled ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-              project.status === 1 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-              project.status === 2 ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-              project.status === 3 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-              project.status === 0 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-              'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-            }`}>
-              {statusLabel}
-            </span>
+            {isArchived ? (
+              <span className="px-3 py-1 text-xs font-medium rounded-full bg-gray-700/80 text-gray-400 border border-gray-600">
+                📦 Archived
+              </span>
+            ) : (
+              <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor()}`}>
+                {statusLabel}
+              </span>
+            )}
           </div>
         </div>
 
@@ -170,7 +207,9 @@ function ProjectCard({ project }: { project: Project }) {
         <div className="p-5">
           {/* Header */}
           <div className="mb-3">
-            <h3 className="text-lg font-semibold text-white group-hover:text-blue-400 transition-colors truncate">
+            <h3 className={`text-lg font-semibold transition-colors truncate ${
+              isArchived ? 'text-gray-400' : 'text-white group-hover:text-blue-400'
+            }`}>
               {displayName}
             </h3>
             <div className="flex items-center gap-2 mt-1">
@@ -190,8 +229,8 @@ function ProjectCard({ project }: { project: Project }) {
             {project.metadata?.description || 'Tokenized real-world asset investment opportunity'}
           </p>
 
-          {/* ROI Badge */}
-          {project.metadata?.attributes?.projected_roi && (
+          {/* ROI Badge - hide for archived */}
+          {!isArchived && project.metadata?.attributes?.projected_roi && (
             <div className="mb-4 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
               <span className="text-sm text-green-400 font-medium">
                 📈 Projected ROI: {project.metadata.attributes.projected_roi}%
@@ -199,11 +238,17 @@ function ProjectCard({ project }: { project: Project }) {
             </div>
           )}
 
-          {/* Cancelled Banner */}
-          {isCancelled && (
+          {/* Status Banners */}
+          {isArchived ? (
+            <div className="mb-4 px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg">
+              <span className="text-sm text-gray-400 font-medium">
+                📦 Archived - All funds refunded
+              </span>
+            </div>
+          ) : (isCancelled || isFailed) && (
             <div className="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
               <span className="text-sm text-red-400 font-medium">
-                ⚠️ This project has been cancelled
+                ⚠️ {isCancelled ? 'Cancelled - Refunds available' : 'Failed'}
               </span>
             </div>
           )}
@@ -212,7 +257,7 @@ function ProjectCard({ project }: { project: Project }) {
           <div className="mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-400">Raised</span>
-              <span className="text-white font-medium">
+              <span className={`font-medium ${isArchived ? 'text-gray-500' : 'text-white'}`}>
                 {formatUSDC(project.totalRaised)} 
                 <span className="text-gray-500"> / {formatUSD(project.fundingGoal)}</span>
               </span>
@@ -220,12 +265,16 @@ function ProjectCard({ project }: { project: Project }) {
             <div className="w-full bg-gray-700 rounded-full h-2">
               <div
                 className={`h-2 rounded-full transition-all ${
-                  isCancelled ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-blue-400'
+                  isArchived ? 'bg-gray-600' :
+                  isCancelled || isFailed ? 'bg-red-500' : 
+                  'bg-gradient-to-r from-blue-500 to-blue-400'
                 }`}
                 style={{ width: `${Math.min(progress, 100)}%` }}
               />
             </div>
-            <div className="text-right text-xs text-gray-500 mt-1">{progress.toFixed(1)}% funded</div>
+            <div className="text-right text-xs text-gray-500 mt-1">
+              {isArchived ? 'Refunded' : `${progress.toFixed(1)}% funded`}
+            </div>
           </div>
 
           {/* Footer Stats */}
@@ -234,10 +283,15 @@ function ProjectCard({ project }: { project: Project }) {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              {statusLabel}
+              {isArchived ? 'Archived' : statusLabel}
             </div>
-            <div className={`text-sm ${isCancelled ? 'text-red-400' : isExpired ? 'text-orange-400' : 'text-gray-400'}`}>
-              {isCancelled ? 'Cancelled' : isExpired ? 'Ended' : `${daysLeft} days left`}
+            <div className={`text-sm ${
+              isArchived ? 'text-gray-500' :
+              isCancelled || isFailed ? 'text-red-400' : 
+              isExpired ? 'text-orange-400' : 
+              'text-gray-400'
+            }`}>
+              {isArchived ? 'Closed' : isCancelled ? 'Cancelled' : isFailed ? 'Failed' : isExpired ? 'Ended' : `${daysLeft} days left`}
             </div>
           </div>
         </div>
@@ -250,7 +304,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'active' | 'funded' | 'ended'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'funded' | 'ended' | 'archived'>('all');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -296,31 +350,37 @@ export default function ProjectsPage() {
               transferable: projectData.transferable,
             };
 
-            // Debug: log status value
-            console.log(`Project ${i}: status = ${projectData.status}`);
+            // Skip metadata and token loading for archived or cancelled/failed projects
+            const isCancelledOrFailed = project.status === 6 || project.status === 7;
 
-            // Load metadata
-            if (project.metadataURI) {
-              try {
-                let url = project.metadataURI;
-                if (url.startsWith('ipfs://')) {
-                  url = `https://gateway.pinata.cloud/ipfs/${url.replace('ipfs://', '')}`;
+            if (!isCancelledOrFailed) {
+              // Load metadata only if valid IPFS hash
+              if (project.metadataURI && isValidIPFSHash(project.metadataURI)) {
+                try {
+                  let url = project.metadataURI;
+                  if (url.startsWith('ipfs://')) {
+                    url = `https://gateway.pinata.cloud/ipfs/${url.replace('ipfs://', '')}`;
+                  }
+                  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+                  if (res.ok) project.metadata = await res.json();
+                } catch {
+                  // Silently fail
                 }
-                const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-                if (res.ok) project.metadata = await res.json();
-              } catch {}
-            }
+              }
 
-            // Load token info
-            if (project.securityToken && project.securityToken !== ZERO_ADDRESS) {
-              try {
-                const [name, symbol] = await Promise.all([
-                  publicClient.readContract({ address: project.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
-                  publicClient.readContract({ address: project.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
-                ]);
-                project.tokenName = name as string;
-                project.tokenSymbol = symbol as string;
-              } catch {}
+              // Load token info
+              if (project.securityToken && project.securityToken !== ZERO_ADDRESS) {
+                try {
+                  const [name, symbol] = await Promise.all([
+                    publicClient.readContract({ address: project.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
+                    publicClient.readContract({ address: project.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
+                  ]);
+                  project.tokenName = name as string;
+                  project.tokenSymbol = symbol as string;
+                } catch {
+                  // Silently fail
+                }
+              }
             }
 
             loadedProjects.push(project);
@@ -341,19 +401,33 @@ export default function ProjectsPage() {
     loadProjects();
   }, []);
 
+  // Count archived projects
+  const archivedCount = projects.filter(isProjectArchived).length;
+
   const filteredProjects = projects.filter((p) => {
-    const isCancelled = p.status === 6;
+    const isArchived = isProjectArchived(p);
+    
+    // Filter logic
+    if (filter === 'active' && p.status !== 2) return false;
+    if (filter === 'funded' && p.status !== 3) return false;
+    if (filter === 'ended') {
+      // Ended = Completed, Cancelled, Failed but NOT archived
+      if (p.status !== 5 && p.status !== 6 && p.status !== 7) return false;
+      if (isArchived) return false;
+    }
+    if (filter === 'archived' && !isArchived) return false;
+    
+    // For 'all', hide archived projects
+    if (filter === 'all' && isArchived) return false;
 
-    if (filter === 'active' && p.status !== 2) return false;  // 2 = Active
-    if (filter === 'funded' && p.status !== 3) return false;  // 3 = Funded
-    if (filter === 'ended' && p.status !== 5 && p.status !== 6 && p.status !== 7) return false; 
-
+    // Search filter
     if (search) {
       const s = search.toLowerCase();
       const matchesName = p.metadata?.name?.toLowerCase().includes(s);
       const matchesSymbol = p.tokenSymbol?.toLowerCase().includes(s);
       const matchesDesc = p.metadata?.description?.toLowerCase().includes(s);
-      if (!matchesName && !matchesSymbol && !matchesDesc) return false;
+      const matchesId = `project #${p.id}`.toLowerCase().includes(s);
+      if (!matchesName && !matchesSymbol && !matchesDesc && !matchesId) return false;
     }
 
     return true;
@@ -399,7 +473,7 @@ export default function ProjectsPage() {
             </div>
 
             {/* Status Filter */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {(['all', 'active', 'funded', 'ended'] as const).map((f) => (
                 <button
                   key={f}
@@ -413,13 +487,29 @@ export default function ProjectsPage() {
                   {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
+              {/* Archived filter - only show if there are archived projects */}
+              {archivedCount > 0 && (
+                <button
+                  onClick={() => setFilter('archived')}
+                  className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+                    filter === 'archived'
+                      ? 'bg-gray-600 text-white'
+                      : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-400'
+                  }`}
+                >
+                  📦 Archived ({archivedCount})
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         {/* Results Count */}
         <p className="text-gray-400 mb-6">
-          Showing {filteredProjects.length} of {projects.length} projects
+          Showing {filteredProjects.length} of {projects.length - archivedCount} projects
+          {archivedCount > 0 && filter !== 'archived' && (
+            <span className="text-gray-500"> ({archivedCount} archived)</span>
+          )}
         </p>
 
         {/* Loading State */}
@@ -450,14 +540,20 @@ export default function ProjectsPage() {
         {/* Empty State */}
         {!loading && !error && filteredProjects.length === 0 && (
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-12 text-center">
-            <div className="text-5xl mb-4">📭</div>
+            <div className="text-5xl mb-4">{filter === 'archived' ? '📦' : '📭'}</div>
             <h2 className="text-xl font-bold text-white mb-2">
-              {projects.length === 0 ? 'No Projects Yet' : 'No Matching Projects'}
+              {filter === 'archived' 
+                ? 'No Archived Projects' 
+                : projects.length === 0 
+                  ? 'No Projects Yet' 
+                  : 'No Matching Projects'}
             </h2>
             <p className="text-gray-400 mb-6">
-              {projects.length === 0
-                ? 'Be the first to create a tokenized investment opportunity!'
-                : 'Try adjusting your search or filters.'}
+              {filter === 'archived'
+                ? 'Cancelled projects with all funds refunded will appear here.'
+                : projects.length === 0
+                  ? 'Be the first to create a tokenized investment opportunity!'
+                  : 'Try adjusting your search or filters.'}
             </p>
             {projects.length === 0 && (
               <Link
