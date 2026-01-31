@@ -90,6 +90,14 @@ interface Project {
 const STATUS_LABELS = ['Draft', 'Active', 'Funded', 'Completed', 'Cancelled'];
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+// Helper to format USDC amounts (6 decimals)
+const formatUSDC = (amount: bigint): string => {
+  return (Number(amount) / 1e6).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+};
+
 function ProjectCard({ project }: { project: Project }) {
   const progress = project.fundingGoal > 0n
     ? Number((project.totalRaised * 100n) / project.fundingGoal)
@@ -175,8 +183,8 @@ function ProjectCard({ project }: { project: Project }) {
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-400">Raised</span>
               <span className="text-white font-medium">
-                ${Number(project.totalRaised).toLocaleString()} 
-                <span className="text-gray-500"> / ${Number(project.fundingGoal).toLocaleString()}</span>
+                ${formatUSDC(project.totalRaised)} 
+                <span className="text-gray-500"> / ${formatUSDC(project.fundingGoal)}</span>
               </span>
             </div>
             <div className="w-full bg-gray-700 rounded-full h-2">
