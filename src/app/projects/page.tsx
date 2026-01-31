@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { createPublicClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
-import { Header } from '@/components/Header';
+import Header  from '@/components/Header';
 import { CONTRACTS } from '@/config/contracts';
 
 const publicClient = createPublicClient({

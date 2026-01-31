@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useAccount, useWriteContract } from 'wagmi';
 import { createPublicClient, http, formatUnits, parseUnits, getAddress } from 'viem';
 import { polygonAmoy } from 'viem/chains';
-import { Header } from '@/components/Header';
+import Header  from '@/components/Header';
 import { CONTRACTS as DEPLOYED_CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 
 // ============================================
