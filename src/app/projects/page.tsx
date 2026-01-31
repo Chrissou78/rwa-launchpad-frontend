@@ -105,7 +105,7 @@ const formatUSD = (amount: bigint): string => {
 
 function ProjectCard({ project }: { project: Project }) {
   const progress = project.fundingGoal > 0n
-    ? Number((project.totalRaised * 100n) / project.fundingGoal)
+    ? Number((project.totalRaised * 100n) / (project.fundingGoal * 1000000n))
     : 0;
 
   const deadline = new Date(Number(project.deadline) * 1000);
