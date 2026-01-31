@@ -1,24 +1,26 @@
-'use client';
+﻿'use client';
 
-import Header  from '@/components/Header';
+import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
-import { 
-  Wallet, 
-  Building2, 
-  Shield, 
-  TrendingUp, 
-  Users, 
-  FileCheck 
+import {
+  Wallet,
+  Building2,
+  Shield,
+  TrendingUp,
+  Users,
+  FileCheck
 } from 'lucide-react';
 
 export default function Home() {
   const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
 
   return (
     <div className="min-h-screen bg-gray-900">
       <Header />
-      
+
       <main>
         {/* Hero Section */}
         <div className="relative overflow-hidden">
@@ -28,16 +30,19 @@ export default function Home() {
                 Tokenize Real World Assets
               </h1>
               <p className="text-xl text-gray-400 mb-8 max-w-3xl mx-auto">
-                Launch compliant security tokens for real estate, commodities, and other 
-                real-world assets on Polygon. Built with ERC-3643 standard for 
+                Launch compliant security tokens for real estate, commodities, and other
+                real-world assets on Polygon. Built with ERC-3643 standard for
                 institutional-grade compliance.
               </p>
-              
+
               {!isConnected ? (
                 <div className="flex justify-center">
-                  <div className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg text-lg">
+                  <button
+                    onClick={openConnectModal}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg text-lg cursor-pointer transition-colors"
+                  >
                     Connect Wallet to Get Started
-                  </div>
+                  </button>
                 </div>
               ) : (
                 <div className="flex justify-center space-x-4">
@@ -64,7 +69,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-white text-center mb-12">
             Platform Features
           </h2>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <FeatureCard
               icon={<Shield className="w-8 h-8 text-blue-500" />}
@@ -103,7 +108,7 @@ export default function Home() {
         <div className="bg-gray-800 py-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-              <StatCard value="$0" label="Total Value Locked" />
+              <StatCard value="\" label="Total Value Locked" />
               <StatCard value="0" label="Projects Launched" />
               <StatCard value="0" label="Verified Investors" />
               <StatCard value="Amoy" label="Network" />
@@ -118,9 +123,9 @@ export default function Home() {
               <span className="text-yellow-500 font-semibold mr-2">⚠️ Testnet:</span>
               <span className="text-yellow-200">
                 This application is running on Polygon Amoy testnet. Get test MATIC from the{' '}
-                <a 
-                  href="https://faucet.polygon.technology/" 
-                  target="_blank" 
+                <a
+                  href="https://faucet.polygon.technology/"
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="underline hover:text-yellow-100"
                 >
@@ -135,14 +140,14 @@ export default function Home() {
   );
 }
 
-function FeatureCard({ 
-  icon, 
-  title, 
-  description 
-}: { 
-  icon: React.ReactNode; 
-  title: string; 
-  description: string; 
+function FeatureCard({
+  icon,
+  title,
+  description
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
 }) {
   return (
     <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-750 transition-colors">
