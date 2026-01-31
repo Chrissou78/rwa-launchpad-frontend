@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { createPublicClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
-import Header  from '@/components/Header';
+import Header from '@/components/Header';
 import { CONTRACTS } from '@/config/contracts';
 
 const publicClient = createPublicClient({
@@ -87,7 +87,8 @@ interface Project {
   tokenSymbol?: string;
 }
 
-const STATUS_LABELS = ['Draft', 'Active', 'Funded', 'Completed', 'Cancelled'];
+// Contract enum: 0=Pending, 1=Active, 2=Funded, 3=Completed, 4=Cancelled
+const STATUS_LABELS = ['Pending', 'Active', 'Funded', 'Completed', 'Cancelled'];
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // Helper to format USDC amounts (6 decimals)
@@ -104,6 +105,10 @@ const formatUSD = (amount: bigint): string => {
 };
 
 function ProjectCard({ project }: { project: Project }) {
+  // Check if cancelled via boolean OR status
+  const isCancelled = project.cancelled || project.status === 4;
+  const displayStatus = isCancelled ? 4 : project.status;
+
   const progress = project.fundingGoal > 0n
     ? Number((project.totalRaised * 100n) / (project.fundingGoal * 1000000n))
     : 0;
@@ -140,12 +145,13 @@ function ProjectCard({ project }: { project: Project }) {
           {/* Status Badge */}
           <div className="absolute top-3 right-3">
             <span className={`px-3 py-1 text-xs font-medium rounded-full ${
-              project.status === 1 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-              project.status === 2 ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-              project.status === 3 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+              isCancelled ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+              displayStatus === 1 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+              displayStatus === 2 ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+              displayStatus === 3 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
               'bg-gray-500/20 text-gray-400 border border-gray-500/30'
             }`}>
-              {STATUS_LABELS[project.status]}
+              {STATUS_LABELS[displayStatus]}
             </span>
           </div>
         </div>
@@ -183,6 +189,15 @@ function ProjectCard({ project }: { project: Project }) {
             </div>
           )}
 
+          {/* Cancelled Banner */}
+          {isCancelled && (
+            <div className="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <span className="text-sm text-red-400 font-medium">
+                ⚠️ This project has been cancelled
+              </span>
+            </div>
+          )}
+
           {/* Progress Bar */}
           <div className="mb-4">
             <div className="flex justify-between text-sm mb-2">
@@ -194,7 +209,9 @@ function ProjectCard({ project }: { project: Project }) {
             </div>
             <div className="w-full bg-gray-700 rounded-full h-2">
               <div
-                className="bg-gradient-to-r from-blue-500 to-blue-400 h-2 rounded-full transition-all"
+                className={`h-2 rounded-full transition-all ${
+                  isCancelled ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-blue-400'
+                }`}
                 style={{ width: `${Math.min(progress, 100)}%` }}
               />
             </div>
@@ -209,8 +226,8 @@ function ProjectCard({ project }: { project: Project }) {
               </svg>
               {Number(project.investorCount)} investors
             </div>
-            <div className={`text-sm ${isExpired ? 'text-red-400' : 'text-gray-400'}`}>
-              {isExpired ? 'Ended' : `${daysLeft} days left`}
+            <div className={`text-sm ${isCancelled ? 'text-red-400' : isExpired ? 'text-orange-400' : 'text-gray-400'}`}>
+              {isCancelled ? 'Cancelled' : isExpired ? 'Ended' : `${daysLeft} days left`}
             </div>
           </div>
         </div>
@@ -309,9 +326,12 @@ export default function ProjectsPage() {
   }, []);
 
   const filteredProjects = projects.filter((p) => {
-    if (filter === 'active' && p.status !== 1) return false;
-    if (filter === 'funded' && p.status !== 2) return false;
-    if (filter === 'ended' && (p.status !== 3 && p.status !== 4)) return false;
+    // Check cancelled status via boolean OR status code
+    const isCancelled = p.cancelled || p.status === 4;
+
+    if (filter === 'active' && (p.status !== 1 || isCancelled)) return false;
+    if (filter === 'funded' && (p.status !== 2 || isCancelled)) return false;
+    if (filter === 'ended' && !isCancelled && p.status !== 3) return false;
 
     if (search) {
       const s = search.toLowerCase();
