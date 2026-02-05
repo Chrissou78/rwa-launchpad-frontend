@@ -330,6 +330,7 @@ export async function POST(request: NextRequest) {
       const kycDocs = {
         walletAddress,
         submittedAt: Date.now(),
+        email: formData.get('email') as string || undefined,
         idDocument: await fileToBase64(idDocument),
         selfie: await fileToBase64(selfie),
         addressProof: await fileToBase64(addressProof),

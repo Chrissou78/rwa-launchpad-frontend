@@ -6,11 +6,12 @@ const STORAGE_DIR = path.join(process.cwd(), '.kyc-storage');
 export interface KYCDocuments {
   walletAddress: string;
   submittedAt: number;
-  idDocument?: { name: string; type: string; data: string }; // base64
+  email?: string; // Email for receipts and communications
+  idDocument?: { name: string; type: string; data: string };
   selfie?: { name: string; type: string; data: string };
   addressProof?: { name: string; type: string; data: string };
   accreditedProof?: { name: string; type: string; data: string };
-  livenessScreenshots?: string[]; // base64 array
+  livenessScreenshots?: string[];
   personalInfo?: {
     fullName: string;
     dateOfBirth: string;

@@ -307,9 +307,11 @@ export function KYCProvider({ children }: { children: ReactNode }) {
       lastAddressRef.current = null;
       return;
     }
-    
-    // Skip if same address
-    if (lastAddressRef.current === address) return;
+
+    // Skip if same address AND we already have non-loading data
+    if (lastAddressRef.current === address && !kycData.isLoading && kycData.tier !== 'None') {
+      return;
+    }
     lastAddressRef.current = address;
     
     let cancelled = false;
@@ -390,7 +392,7 @@ export function KYCProvider({ children }: { children: ReactNode }) {
           remainingLimit
         }));
       }
-    }, 60000);
+    }, 300000);
     
     return () => clearInterval(interval);
   }, [isConnected, address, tierLimits]);

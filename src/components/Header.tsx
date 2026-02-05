@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { ConnectButton } from './ConnectButton';
 import { useAccount } from 'wagmi';
 import { useKYC, getTierInfo, KYCTier } from '@/contexts/KYCContext';
 import { useState } from 'react';

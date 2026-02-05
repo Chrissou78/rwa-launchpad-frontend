@@ -419,7 +419,7 @@ export default function CreateProjectPage() {
               <StepDeploy 
                 data={projectData}
                 uploadedUrls={uploadedUrls}
-                isConnected={isConnected}
+                onBack={() => setCurrentStep(2)}
               />
             )}
           </div>

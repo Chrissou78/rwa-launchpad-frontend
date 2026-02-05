@@ -12,15 +12,6 @@ import { IdentityRegistryABI, RWALaunchpadFactoryABI } from '@/config/abis';
 type AdminTab = 'overview' | 'identity' | 'factory' | 'kyc' | 'projects';
 
 const PROJECT_NFT = CONTRACTS.RWAProjectNFT;
-const STATUS_NAMES = ['Pending', 'Active', 'Funded', 'Completed', 'Cancelled', 'Failed'];
-const STATUS_COLORS: Record<number, string> = {
-  0: 'bg-gray-500/20 text-gray-400',
-  1: 'bg-blue-500/20 text-blue-400',
-  2: 'bg-green-500/20 text-green-400',
-  3: 'bg-purple-500/20 text-purple-400',
-  4: 'bg-red-500/20 text-red-400',
-  5: 'bg-orange-500/20 text-orange-400',
-};
 
 const projectNftAbi = [
   {
@@ -63,12 +54,36 @@ const projectNftAbi = [
 interface Project {
   id: number;
   owner: string;
+  metadataURI: string;
   fundingGoal: number;
   totalRaised: number;
   status: number;
   escrowVault: string;
   deadline: number;
 }
+
+interface ProjectMetadata {
+  name?: string;
+  description?: string;
+  image?: string;
+  external_url?: string;
+  attributes?: Array<{ trait_type: string; value: string }>;
+  properties?: {
+    funding_goal?: number;
+    token_name?: string;
+    token_symbol?: string;
+    total_supply?: number;
+  };
+  documents?: Array<{ name: string; url: string }>;
+}
+
+const convertIPFSUrl = (url: string): string => {
+  if (!url) return '';
+  if (url.startsWith('ipfs://')) {
+    return `https://gateway.pinata.cloud/ipfs/${url.replace('ipfs://', '')}`;
+  }
+  return url;
+};
 
 export default function AdminPage() {
   const { isConnected } = useAccount();
@@ -217,11 +232,39 @@ function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminTab) => void }) 
 function ProjectManagement() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [activatingId, setActivatingId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [result, setResult] = useState<any>(null);
+  const [projectMetadata, setProjectMetadata] = useState<ProjectMetadata | null>(null);
+  const [loadingMetadata, setLoadingMetadata] = useState(false);
+
+  // Correct status mapping (0-7)
+  const STATUS_LABELS: Record<number, string> = {
+    0: 'Draft',
+    1: 'Pending',
+    2: 'Active',
+    3: 'Funded',
+    4: 'In Progress',
+    5: 'Completed',
+    6: 'Cancelled',
+    7: 'Failed',
+  };
+
+  const STATUS_STYLES: Record<number, string> = {
+    0: 'bg-gray-500/20 text-gray-400',
+    1: 'bg-yellow-500/20 text-yellow-400',
+    2: 'bg-blue-500/20 text-blue-400',
+    3: 'bg-green-500/20 text-green-400',
+    4: 'bg-purple-500/20 text-purple-400',
+    5: 'bg-emerald-500/20 text-emerald-400',
+    6: 'bg-red-500/20 text-red-400',
+    7: 'bg-orange-500/20 text-orange-400',
+  };
 
   useEffect(() => {
     fetchProjects();
@@ -253,7 +296,8 @@ function ProjectManagement() {
         projectList.push({
           id: i,
           owner: data.owner,
-          fundingGoal: Number(data.fundingGoal) / 1e6,
+          metadataURI: data.metadataURI,
+          fundingGoal: Number(data.fundingGoal),
           totalRaised: Number(data.totalRaised) / 1e6,
           status: Number(data.status),
           escrowVault: data.escrowVault,
@@ -273,7 +317,31 @@ function ProjectManagement() {
     setSelectedProject(project);
     setCancelReason('Project cancelled by admin');
     setShowCancelModal(true);
+    setShowDetailModal(false);
     setResult(null);
+  };
+
+  const openDetailModal = async (project: Project) => {
+    setSelectedProject(project);
+    setShowDetailModal(true);
+    setShowCancelModal(false);
+    setResult(null);
+    setProjectMetadata(null);
+
+    // Fetch metadata from IPFS
+    if (project.metadataURI) {
+      setLoadingMetadata(true);
+      try {
+        const url = convertIPFSUrl(project.metadataURI);
+        const response = await fetch(url);
+        const metadata = await response.json();
+        setProjectMetadata(metadata);
+      } catch (error) {
+        console.error('Error fetching metadata:', error);
+      } finally {
+        setLoadingMetadata(false);
+      }
+    }
   };
 
   const handleCancel = async () => {
@@ -297,6 +365,7 @@ function ProjectManagement() {
 
       if (data.success) {
         await fetchProjects();
+        setShowDetailModal(false);
       }
     } catch (error: any) {
       setResult({ success: false, error: error.message });
@@ -304,6 +373,71 @@ function ProjectManagement() {
       setCancellingId(null);
     }
   };
+
+  const handleActivate = async () => {
+    if (!selectedProject) return;
+
+    setActivatingId(selectedProject.id);
+    setResult(null);
+
+    try {
+      const response = await fetch(`/api/admin/projects/${selectedProject.id}/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+      setResult(data);
+
+      if (data.success) {
+        await fetchProjects();
+      }
+    } catch (error: any) {
+      setResult({ success: false, error: error.message });
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
+  const handleEnableRefunds = async (project: Project) => {
+    setSelectedProject(project);
+    setActivatingId(project.id);
+    setResult(null);
+
+    try {
+      const response = await fetch(`/api/admin/projects/${project.id}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+      setResult(data);
+
+      if (data.success) {
+        await fetchProjects();
+      }
+    } catch (error: any) {
+      setResult({ success: false, error: error.message });
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
+  // Filter projects
+  const activeStatuses = [0, 1, 2, 3, 4];
+  const archivedStatuses = [5, 6, 7];
+
+  const activeProjects = projects.filter(p => 
+    [0, 1, 2, 3, 4].includes(p.status) ||
+    ([6, 7].includes(p.status) && p.totalRaised > 0)
+  );
+
+  const archivedProjects = projects.filter(p => 
+    p.status === 5 ||
+    ([6, 7].includes(p.status) && p.totalRaised === 0)
+  );
+
+  const displayedProjects = showArchived ? archivedProjects : activeProjects;
 
   return (
     <div className="space-y-6">
@@ -314,10 +448,34 @@ function ProjectManagement() {
         </button>
       </div>
 
+      {/* Toggle Active/Archived */}
+      <div className="flex gap-4">
+        <button
+          onClick={() => setShowArchived(false)}
+          className={`px-4 py-2 rounded-lg font-medium transition ${
+            !showArchived ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          Active Projects ({activeProjects.length})
+        </button>
+        <button
+          onClick={() => setShowArchived(true)}
+          className={`px-4 py-2 rounded-lg font-medium transition ${
+            showArchived ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          Archived ({archivedProjects.length})
+        </button>
+      </div>
+
       {loading ? (
         <div className="text-center py-16">
           <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
           <p className="text-gray-400 mt-4">Loading projects...</p>
+        </div>
+      ) : displayedProjects.length === 0 ? (
+        <div className="text-center py-16 bg-gray-800 rounded-xl">
+          <p className="text-gray-400">{showArchived ? 'No archived projects' : 'No active projects'}</p>
         </div>
       ) : (
         <div className="bg-gray-800 rounded-xl overflow-hidden">
@@ -333,34 +491,245 @@ function ProjectManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {projects.map((project) => (
+              {displayedProjects.map((project) => (
                 <tr key={project.id} className="hover:bg-gray-750">
                   <td className="px-6 py-4 text-white font-mono">#{project.id}</td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[project.status]}`}>
-                      {STATUS_NAMES[project.status]}
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[project.status] || 'bg-gray-500/20 text-gray-400'}`}>
+                      {STATUS_LABELS[project.status] || `Unknown (${project.status})`}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-white">${project.totalRaised.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-white">
+                    ${project.totalRaised.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
                   <td className="px-6 py-4 text-gray-400">${project.fundingGoal.toLocaleString()}</td>
                   <td className="px-6 py-4 text-gray-400">{new Date(project.deadline * 1000).toLocaleDateString()}</td>
                   <td className="px-6 py-4">
-                    {project.status !== 4 && project.status !== 3 ? (
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => openCancelModal(project)}
-                        disabled={cancellingId === project.id}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white text-sm rounded-lg transition"
+                        onClick={() => openDetailModal(project)}
+                        className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-lg transition"
                       >
-                        {cancellingId === project.id ? 'Cancelling...' : 'Cancel & Refund'}
+                        View
                       </button>
-                    ) : (
-                      <span className="text-gray-500 text-sm">{project.status === 4 ? 'Cancelled' : 'Completed'}</span>
-                    )}
+                      
+                      {/* Active projects: Cancel button */}
+                      {activeStatuses.includes(project.status) && (
+                        <button
+                          onClick={() => openCancelModal(project)}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition"
+                        >
+                          Cancel
+                        </button>
+                      )}
+
+                      {/* Cancelled/Failed with funds: Enable Refunds button */}
+                      {[6, 7].includes(project.status) && project.totalRaised > 0 && (
+                        <button
+                          onClick={() => handleEnableRefunds(project)}
+                          disabled={activatingId === project.id}
+                          className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 text-white text-sm rounded-lg transition"
+                        >
+                          {activatingId === project.id ? 'Processing...' : 'Enable Refunds'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {showDetailModal && selectedProject && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto py-8">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  {projectMetadata?.name || `Project #${selectedProject.id}`}
+                </h2>
+                <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[selectedProject.status]}`}>
+                  {STATUS_LABELS[selectedProject.status]}
+                </span>
+              </div>
+              <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Loading Metadata */}
+            {loadingMetadata && (
+              <div className="text-center py-4">
+                <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+                <p className="text-gray-400 text-sm mt-2">Loading project details...</p>
+              </div>
+            )}
+
+            {/* Project Image */}
+            {projectMetadata?.image && (
+              <div className="mb-6">
+                <img 
+                  src={convertIPFSUrl(projectMetadata.image)} 
+                  alt={projectMetadata.name || 'Project'} 
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+              </div>
+            )}
+
+            {/* Description */}
+            {projectMetadata?.description && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-400 mb-2">Description</h3>
+                <p className="text-gray-300 text-sm">{projectMetadata.description}</p>
+              </div>
+            )}
+
+            {/* Attributes */}
+            {projectMetadata?.attributes && projectMetadata.attributes.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-400 mb-2">Project Details</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {projectMetadata.attributes.map((attr, i) => (
+                    <div key={i} className="bg-gray-700 rounded-lg p-3">
+                      <p className="text-gray-400 text-xs">{attr.trait_type}</p>
+                      <p className="text-white text-sm font-medium">{attr.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Token Properties */}
+            {projectMetadata?.properties && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-400 mb-2">Token Information</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {projectMetadata.properties.token_name && (
+                    <div className="bg-gray-700 rounded-lg p-3">
+                      <p className="text-gray-400 text-xs">Token Name</p>
+                      <p className="text-white text-sm font-medium">{projectMetadata.properties.token_name}</p>
+                    </div>
+                  )}
+                  {projectMetadata.properties.token_symbol && (
+                    <div className="bg-gray-700 rounded-lg p-3">
+                      <p className="text-gray-400 text-xs">Token Symbol</p>
+                      <p className="text-white text-sm font-medium">{projectMetadata.properties.token_symbol}</p>
+                    </div>
+                  )}
+                  {projectMetadata.properties.total_supply && (
+                    <div className="bg-gray-700 rounded-lg p-3">
+                      <p className="text-gray-400 text-xs">Total Supply</p>
+                      <p className="text-white text-sm font-medium">{projectMetadata.properties.total_supply.toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Documents */}
+            {projectMetadata?.documents && projectMetadata.documents.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-400 mb-2">Documents</h3>
+                <div className="space-y-2">
+                  {projectMetadata.documents.map((doc, i) => (
+                    <a
+                      key={i}
+                      href={convertIPFSUrl(doc.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 bg-gray-700 hover:bg-gray-600 rounded-lg p-3 transition"
+                    >
+                      <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="text-white text-sm">{doc.name}</span>
+                      <svg className="w-4 h-4 text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Funding Details */}
+            <div className="space-y-4 mb-6">
+              <h3 className="text-sm font-medium text-gray-400">Funding Information</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">Funding Goal</p>
+                  <p className="text-white text-lg font-bold">${selectedProject.fundingGoal.toLocaleString()}</p>
+                </div>
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">Total Raised</p>
+                  <p className="text-white text-lg font-bold">${selectedProject.totalRaised.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+              <div className="bg-gray-700 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">Deadline</p>
+                <p className="text-white">{new Date(selectedProject.deadline * 1000).toLocaleString()}</p>
+              </div>
+              <div className="bg-gray-700 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">Owner</p>
+                <p className="text-white font-mono text-sm break-all">{selectedProject.owner}</p>
+              </div>
+              {selectedProject.metadataURI && (
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">Metadata URI</p>
+                  <a 
+                    href={convertIPFSUrl(selectedProject.metadataURI)} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline font-mono text-xs break-all"
+                  >
+                    {selectedProject.metadataURI}
+                  </a>
+                </div>
+              )}
+
+              {result && (
+                <div className={`rounded-lg p-4 ${result.success ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                  {result.success ? (
+                    <p className="text-green-400">{result.message || 'Action completed successfully!'}</p>
+                  ) : (
+                    <p className="text-red-400">{result.error}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowDetailModal(false)} className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition">
+                Close
+              </button>
+
+              {/* Pending: Activate button */}
+              {selectedProject.status === 1 && (
+                <button
+                  onClick={handleActivate}
+                  disabled={activatingId !== null}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition"
+                >
+                  {activatingId !== null ? 'Activating...' : 'Activate Project'}
+                </button>
+              )}
+
+              {/* Active: Cancel button */}
+              {activeStatuses.includes(selectedProject.status) && (
+                <button
+                  onClick={() => openCancelModal(selectedProject)}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
+                >
+                  Cancel Project
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

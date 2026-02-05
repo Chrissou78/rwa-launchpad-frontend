@@ -277,6 +277,7 @@ export default function KYCPage() {
   const [upgradeStep, setUpgradeStep] = useState<'select' | 'form' | 'signing' | 'processing' | 'submitted'>('select');
   const [selectedTier, setSelectedTier] = useState<number>(0);
   const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [countryCode, setCountryCode] = useState<number>(0);
   const [idDocument, setIdDocument] = useState<File | null>(null);
@@ -462,6 +463,7 @@ export default function KYCPage() {
     
     // Reset form
     setFullName('');
+    setEmail('');
     setDateOfBirth('');
     setCountryCode(kycData?.countryCode || 0);
     setIdDocument(null);
@@ -567,6 +569,10 @@ export default function KYCPage() {
     if (upgradeRequirements.needsPersonalInfo) {
       if (!fullName.trim()) {
         setFormError('Please enter your full name');
+        return false;
+      }
+      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setFormError('Please enter a valid email address');
         return false;
       }
       if (!dateOfBirth) {
@@ -724,6 +730,7 @@ export default function KYCPage() {
       // Personal info for new submissions
       if (upgradeRequirements.needsPersonalInfo) {
         formData.append('fullName', fullName);
+        formData.append('email', email);
         formData.append('dateOfBirth', dateOfBirth);
         formData.append('countryCode', countryCode.toString());
       }
@@ -1167,6 +1174,17 @@ export default function KYCPage() {
                     placeholder="Enter your full legal name"
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
                   />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Email Address *</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
+                  />
+                  <p className="text-gray-500 text-xs mt-1">Used for investment receipts and notifications</p>
                 </div>
                 
                 <div>

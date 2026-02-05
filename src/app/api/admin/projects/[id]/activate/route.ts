@@ -1,0 +1,69 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createWalletClient, createPublicClient, http } from 'viem';
+import { polygonAmoy } from 'viem/chains';
+import { privateKeyToAccount } from 'viem/accounts';
+import { CONTRACTS } from '@/config/contracts';
+
+const projectNftAbi = [
+  {
+    name: 'updateProjectStatus',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'newStatus', type: 'uint8' },
+    ],
+    outputs: [],
+  },
+] as const;
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    // Await params in Next.js 15+
+    const { id } = await params;
+    const projectId = parseInt(id);
+    
+    if (isNaN(projectId)) {
+      return NextResponse.json({ success: false, error: 'Invalid project ID' }, { status: 400 });
+    }
+
+    if (!process.env.VERIFIER_PRIVATE_KEY) {
+      return NextResponse.json({ success: false, error: 'Server not configured' }, { status: 500 });
+    }
+
+    const account = privateKeyToAccount(process.env.VERIFIER_PRIVATE_KEY as `0x${string}`);
+    
+    const walletClient = createWalletClient({
+      account,
+      chain: polygonAmoy,
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+    });
+
+    const publicClient = createPublicClient({
+      chain: polygonAmoy,
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+    });
+
+    // Update status to Active (2)
+    const hash = await walletClient.writeContract({
+      address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+      abi: projectNftAbi,
+      functionName: 'updateProjectStatus',
+      args: [BigInt(projectId), 2], // 2 = Active
+    });
+
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Project activated successfully',
+      transaction: hash,
+    });
+  } catch (error: any) {
+    console.error('Error activating project:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

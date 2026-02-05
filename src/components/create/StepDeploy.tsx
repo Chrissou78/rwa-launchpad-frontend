@@ -58,7 +58,7 @@ interface Props {
     pitchDeck?: string;
     legalDocs: string[];
   };
-  isConnected: boolean;
+  onBack: () => void;
 }
 
 interface DeployedContracts {
@@ -73,7 +73,7 @@ type DeployStatus = 'idle' | 'connecting' | 'uploading' | 'waitingWallet' | 'con
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
 
-export function StepDeploy({ data, onBack }: Props) {
+export function StepDeploy({ data, uploadedUrls, onBack }: Props) {
   const { address, isConnected, isConnecting } = useAccount();
   const { connect, isPending: isConnectPending, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();

@@ -2,7 +2,7 @@
 
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
+import { useConnectModal } from '../components/ConnectButton';
 import Link from 'next/link';
 import {
   Wallet,

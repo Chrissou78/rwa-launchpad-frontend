@@ -1,8 +1,9 @@
 import { http, createConfig } from 'wagmi'
-import { injected } from 'wagmi/connectors'
+import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors'
+import type { Chain } from 'viem'
 
 // Polygon Amoy Testnet
-export const polygonAmoy = {
+export const polygonAmoy: Chain = {
   id: 80002,
   name: 'Polygon Amoy',
   nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
@@ -13,15 +14,32 @@ export const polygonAmoy = {
     default: { name: 'PolygonScan', url: 'https://amoy.polygonscan.com' },
   },
   testnet: true,
-} as const
+}
+
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || ''
 
 export const config = createConfig({
   chains: [polygonAmoy],
   connectors: [
-    injected(), // MetaMask, Rabby, Coinbase Wallet, etc. - any browser extension
+    injected({ target: 'metaMask' }),
+    injected({ target: 'phantom' }),
+    injected({ target: 'coinbaseWallet' }),
+    ...(projectId ? [
+      walletConnect({ 
+        projectId,
+        metadata: {
+          name: 'RWA Launchpad',
+          description: 'Real World Asset Investment Platform',
+          url: 'https://rwa-launchpad.com',
+          icons: ['https://rwa-launchpad.com/icon.png']
+        },
+        showQrModal: true,
+      }),
+    ] : []),
+    injected(), // Fallback for other browser wallets
   ],
   transports: {
-    [polygonAmoy.id]: http(),
+    [polygonAmoy.id]: http('https://rpc-amoy.polygon.technology'),
   },
   ssr: true,
 })
