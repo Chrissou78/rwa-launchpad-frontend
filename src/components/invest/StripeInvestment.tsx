@@ -243,6 +243,160 @@ function PaymentForm({
       </p>
     </form>
   );
+}function PaymentForm({
+  projectId,
+  amount,
+  tokenAmount,
+  onSuccess,
+  onError,
+  onProcessing,
+}: {
+  projectId: number;
+  amount: number;
+  tokenAmount: number;
+  onSuccess: () => void;
+  onError: (message: string) => void;
+  onProcessing: (processing: boolean) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isReady, setIsReady] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!stripe || !elements || !isReady || isSubmitting) {
+      console.log('Not ready:', { stripe: !!stripe, elements: !!elements, isReady, isSubmitting });
+      return;
+    }
+
+    setIsSubmitting(true);
+    onProcessing(true);
+
+    try {
+      // First, trigger form validation and wallet collection
+      const { error: submitError } = await elements.submit();
+      
+      if (submitError) {
+        console.error('Elements submit error:', submitError);
+        onError(submitError.message || 'Please check your card details.');
+        onProcessing(false);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Then confirm the payment
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: `${window.location.origin}/projects/${projectId}?payment=success`,
+        },
+        redirect: 'if_required',
+      });
+
+      if (error) {
+        console.error('Payment error:', error);
+        onError(error.message || 'Payment failed. Please try again.');
+        onProcessing(false);
+        setIsSubmitting(false);
+      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+        console.log('Payment succeeded:', paymentIntent.id);
+        onSuccess();
+      } else if (paymentIntent) {
+        console.log('Payment status:', paymentIntent.status);
+        // Handle other statuses like 'processing' or 'requires_action'
+        if (paymentIntent.status === 'processing') {
+          onSuccess(); // Treat as success, webhook will handle it
+        } else {
+          onError(`Payment status: ${paymentIntent.status}. Please try again.`);
+          onProcessing(false);
+          setIsSubmitting(false);
+        }
+      }
+    } catch (err) {
+      console.error('Payment exception:', err);
+      onError('An unexpected error occurred. Please try again.');
+      onProcessing(false);
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Order Summary */}
+      <div className="bg-slate-700/50 rounded-xl p-4 space-y-3">
+        <h4 className="text-sm font-medium text-slate-300">Order Summary</h4>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Investment Amount</span>
+          <span className="text-white font-semibold">${amount.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Tokens to Receive</span>
+          <span className="text-green-400 font-semibold">{tokenAmount.toLocaleString()} tokens</span>
+        </div>
+        <div className="border-t border-slate-600 pt-3 flex justify-between">
+          <span className="text-slate-300 font-medium">Total</span>
+          <span className="text-white font-bold text-lg">${amount.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Stripe Payment Element */}
+      <div className="bg-slate-700/30 rounded-xl p-4">
+        <PaymentElement
+          onReady={() => {
+            console.log('PaymentElement ready');
+            setIsReady(true);
+          }}
+          onLoadError={(error) => {
+            console.error('PaymentElement load error:', error);
+            onError('Failed to load payment form. Please refresh and try again.');
+          }}
+          options={{
+            layout: 'tabs',
+            wallets: {
+              applePay: 'never',
+              googlePay: 'never',
+            },
+          }}
+        />
+      </div>
+
+      {!isReady && (
+        <div className="flex items-center justify-center gap-2 text-slate-400 py-2">
+          <span className="animate-spin w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full" />
+          <span className="text-sm">Loading payment form...</span>
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={!stripe || !elements || !isReady || isSubmitting}
+        className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed rounded-xl text-white font-semibold transition flex items-center justify-center gap-2"
+      >
+        {isSubmitting ? (
+          <>
+            <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+            Processing...
+          </>
+        ) : (
+          <>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Pay ${amount.toLocaleString()}
+          </>
+        )}
+      </button>
+
+      <p className="text-slate-500 text-xs text-center flex items-center justify-center gap-1">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+        Secured by Stripe. Your card details are encrypted.
+      </p>
+    </form>
+  );
 }
 
 export default function StripeInvestment({
