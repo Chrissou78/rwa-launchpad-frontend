@@ -19,7 +19,7 @@ interface StripeInvestmentProps {
   minInvestment: number;
   maxInvestment: number;
   tokenPrice: number;
-  onSuccess: () => void;
+  onSuccess: (amountInvested: number) => void;
   onCancel: () => void;
 }
 
@@ -548,7 +548,7 @@ export default function StripeInvestment({
                 Tokens will be minted to your wallet shortly.
               </p>
               <button
-                onClick={onSuccess}
+                onClick={() => onSuccess(amountNum)}
                 className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-xl text-white font-semibold transition mt-6"
               >
                 Done

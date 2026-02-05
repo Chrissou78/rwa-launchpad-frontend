@@ -582,15 +582,14 @@ function ProjectPageContent() {
   const [showInvestModal, setShowInvestModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'card' | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [pendingInvestment, setPendingInvestment] = useState<number>(0);
 
   // Handle payment redirect
   useEffect(() => {
     const payment = searchParams.get('payment');
     if (payment === 'success') {
       setPaymentSuccess(true);
-      // Clear the URL parameter
       window.history.replaceState({}, '', `/projects/${projectId}`);
-      // Hide success message after 10 seconds
       setTimeout(() => setPaymentSuccess(false), 10000);
     }
   }, [searchParams, projectId]);
@@ -610,6 +609,8 @@ function ProjectPageContent() {
       })) as Project;
 
       setProject(projectData);
+      // Clear pending investment once we have fresh blockchain data
+      setPendingInvestment(0);
 
       const isCancelledOrFailed = projectData.status === 6 || projectData.status === 7;
 
@@ -711,7 +712,6 @@ function ProjectPageContent() {
     loadData();
   }, [projectId, address]);
 
-  // Reload data after payment success
   useEffect(() => {
     if (paymentSuccess) {
       loadData();
@@ -723,7 +723,9 @@ function ProjectPageContent() {
   const imageUrl = metadata?.image ? convertIPFSUrl(metadata.image) : null;
 
   const fundingGoalUSD = project ? Number(project.fundingGoal) : 0;
-  const totalRaisedUSD = project ? Number(project.totalRaised) / 1e6 : 0;
+  // Include pending investment for optimistic UI
+  const onChainRaisedUSD = project ? Number(project.totalRaised) / 1e6 : 0;
+  const totalRaisedUSD = onChainRaisedUSD + pendingInvestment;
   const progress = fundingGoalUSD > 0 ? Math.min((totalRaisedUSD / fundingGoalUSD) * 100, 100) : 0;
 
   const deadlineDate = project ? new Date(Number(project.deadline) * 1000) : null;
@@ -983,6 +985,9 @@ function ProjectPageContent() {
                     <p className="text-slate-400 text-sm">Raised</p>
                     <p className="text-2xl font-bold text-white">
                       ${totalRaisedUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      {pendingInvestment > 0 && (
+                        <span className="text-sm text-green-400 ml-2">(updating...)</span>
+                      )}
                     </p>
                   </div>
                   <div className="text-right">
@@ -1079,20 +1084,23 @@ function ProjectPageContent() {
                   )}
 
                   {paymentMethod === 'card' && (
-                    <div className="space-y-4">
-                      <StripeInvestment
-                        projectId={Number(projectId)}
-                        projectName={projectName}
-                        minInvestment={Number(project.minInvestment)}
-                        maxInvestment={Number(project.maxInvestment)}
-                        tokenPrice={tokenPrice}
-                        onSuccess={() => {
-                          setPaymentMethod(null);
+                    <StripeInvestment
+                      projectId={Number(projectId)}
+                      projectName={projectName}
+                      minInvestment={Number(project.minInvestment)}
+                      maxInvestment={Number(project.maxInvestment)}
+                      tokenPrice={tokenPrice}
+                      onSuccess={(amountInvested: number) => {
+                        // Optimistic update - show amount immediately
+                        setPendingInvestment(prev => prev + amountInvested);
+                        setPaymentMethod(null);
+                        // Refresh from blockchain after a delay
+                        setTimeout(() => {
                           loadData();
-                        }}
-                        onCancel={() => setPaymentMethod(null)}
-                      />
-                    </div>
+                        }, 3000);
+                      }}
+                      onCancel={() => setPaymentMethod(null)}
+                    />
                   )}
                 </div>
               )}
