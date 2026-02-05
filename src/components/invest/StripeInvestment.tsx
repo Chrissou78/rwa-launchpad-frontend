@@ -141,33 +141,49 @@ function CheckoutFormInner({
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [isReady, setIsReady] = useState(false);
+  const [isElementReady, setIsElementReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [cardComplete, setCardComplete] = useState(false);
+
+  // Double-check readiness
+  const isFullyReady = stripe && elements && isElementReady && cardComplete;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!stripe) {
-      setErrorMessage('Stripe has not loaded yet. Please wait.');
+    console.log('Submit clicked - state:', { 
+      stripe: !!stripe, 
+      elements: !!elements, 
+      isElementReady, 
+      cardComplete 
+    });
+
+    if (!stripe || !elements) {
+      setErrorMessage('Payment system not loaded. Please refresh the page.');
       return;
     }
 
-    if (!elements) {
-      setErrorMessage('Payment form not ready. Please wait.');
+    if (!isElementReady) {
+      setErrorMessage('Payment form is still loading. Please wait.');
       return;
     }
 
-    if (!isReady) {
-      setErrorMessage('Please enter your card details.');
+    if (!cardComplete) {
+      setErrorMessage('Please complete your card details.');
       return;
     }
 
     setIsProcessing(true);
 
+    // Small delay to ensure everything is mounted
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     try {
-      const { error, paymentIntent } = await stripe.confirmPayment({
+      console.log('Calling confirmPayment...');
+      
+      const result = await stripe.confirmPayment({
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/projects/${projectId}?payment=success`,
@@ -175,21 +191,23 @@ function CheckoutFormInner({
         redirect: 'if_required',
       });
 
-      if (error) {
-        setErrorMessage(error.message || 'Payment failed. Please try again.');
+      console.log('confirmPayment result:', result);
+
+      if (result.error) {
+        console.error('Payment error:', result.error);
+        setErrorMessage(result.error.message || 'Payment failed. Please try again.');
         setIsProcessing(false);
-      } else if (paymentIntent) {
-        if (paymentIntent.status === 'succeeded') {
-          onSuccess();
-        } else if (paymentIntent.status === 'processing') {
+      } else if (result.paymentIntent) {
+        console.log('Payment intent status:', result.paymentIntent.status);
+        if (result.paymentIntent.status === 'succeeded' || result.paymentIntent.status === 'processing') {
           onSuccess();
         } else {
-          setErrorMessage(`Payment status: ${paymentIntent.status}`);
+          setErrorMessage(`Payment status: ${result.paymentIntent.status}`);
           setIsProcessing(false);
         }
       }
     } catch (err: any) {
-      console.error('Payment error:', err);
+      console.error('Payment exception:', err);
       setErrorMessage(err.message || 'An unexpected error occurred.');
       setIsProcessing(false);
     }
@@ -229,10 +247,12 @@ function CheckoutFormInner({
       <div className="bg-slate-700/30 rounded-xl p-4 min-h-[200px]">
         <PaymentElement
           onReady={() => {
-            console.log('PaymentElement is ready');
-            setIsReady(true);
+            console.log('PaymentElement onReady fired');
+            setIsElementReady(true);
           }}
           onChange={(event) => {
+            console.log('PaymentElement onChange:', event.complete, event.empty);
+            setCardComplete(event.complete);
             if (event.complete) {
               setErrorMessage(null);
             }
@@ -242,6 +262,19 @@ function CheckoutFormInner({
           }}
         />
       </div>
+
+      {!isElementReady && (
+        <div className="flex items-center justify-center gap-2 text-slate-400 py-2">
+          <span className="animate-spin w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full" />
+          <span className="text-sm">Loading payment form...</span>
+        </div>
+      )}
+
+      {isElementReady && !cardComplete && (
+        <p className="text-slate-400 text-sm text-center">
+          Enter your card details above
+        </p>
+      )}
 
       {errorMessage && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-start gap-2">
@@ -254,13 +287,13 @@ function CheckoutFormInner({
 
       <button
         type="submit"
-        disabled={!stripe || !isReady}
+        disabled={!isFullyReady}
         className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed rounded-xl text-white font-semibold transition flex items-center justify-center gap-2"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
-        {isReady ? `Pay $${amount.toLocaleString()}` : 'Loading...'}
+        {!isElementReady ? 'Loading...' : !cardComplete ? 'Enter card details' : `Pay $${amount.toLocaleString()}`}
       </button>
 
       <button
@@ -273,7 +306,7 @@ function CheckoutFormInner({
 
       <p className="text-slate-500 text-xs text-center flex items-center justify-center gap-1">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
         Secured by Stripe
       </p>
