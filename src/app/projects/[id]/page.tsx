@@ -1090,15 +1090,55 @@ function ProjectPageContent() {
                       minInvestment={Number(project.minInvestment)}
                       maxInvestment={Number(project.maxInvestment)}
                       tokenPrice={tokenPrice}
-                      onSuccess={(amountInvested: number) => {
-                        // Optimistic update - show amount immediately
-                        setPendingInvestment(prev => prev + amountInvested);
-                        setPaymentMethod(null);
-                        // Refresh from blockchain after a delay
-                        setTimeout(() => {
-                          loadData();
-                        }, 3000);
-                      }}
+                     onSuccess={(amountInvested) => {
+                      // Add optimistic amount
+                      setPendingInvestment(prev => prev + amountInvested);
+                      setPaymentMethod(null);
+                      
+                      // Poll blockchain until it catches up (don't refresh immediately)
+                      const expectedTotal = totalRaisedUSD + amountInvested;
+                      
+                      const pollBlockchain = async () => {
+                        let attempts = 0;
+                        const maxAttempts = 30; // 30 seconds max
+                        
+                        const checkTotal = async () => {
+                          attempts++;
+                          try {
+                            const projectData = await publicClient.readContract({
+                              address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+                              abi: RWAProjectNFTABI,
+                              functionName: 'getProject',
+                              args: [BigInt(params.id)],
+                            }) as Project;
+                            
+                            const onChainTotal = Number(projectData.totalRaised) / 1e6;
+                            
+                            if (onChainTotal >= expectedTotal || attempts >= maxAttempts) {
+                              // Blockchain caught up or timeout - clear pending
+                              setPendingInvestment(0);
+                              await loadData(); // Now safe to refresh
+                            } else {
+                              // Keep polling every 1 second
+                              setTimeout(checkTotal, 1000);
+                            }
+                          } catch (error) {
+                            console.error('Polling error:', error);
+                            if (attempts >= maxAttempts) {
+                              setPendingInvestment(0);
+                              await loadData();
+                            } else {
+                              setTimeout(checkTotal, 1000);
+                            }
+                          }
+                        };
+                        
+                        // Start polling after 2 seconds (give blockchain time)
+                        setTimeout(checkTotal, 2000);
+                      };
+                      
+                      pollBlockchain();
+                    }}
                       onCancel={() => setPaymentMethod(null)}
                     />
                   )}
