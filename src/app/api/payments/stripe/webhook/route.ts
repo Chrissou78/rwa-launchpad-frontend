@@ -6,14 +6,24 @@ import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-12-18.acacia',
-});
-
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
-const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
-
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+// Lazy initialization
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY not configured');
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2024-12-18.acacia',
+  });
+}
+
+function getWebhookSecret() {
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    throw new Error('STRIPE_WEBHOOK_SECRET not configured');
+  }
+  return process.env.STRIPE_WEBHOOK_SECRET;
+}
 
 // ABIs
 const OffChainInvestmentManagerABI = [
@@ -94,7 +104,7 @@ const RWAProjectNFTABI = [
 
 const publicClient = createPublicClient({
   chain: polygonAmoy,
-  transport: http('https://rpc-amoy.polygon.technology'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
 });
 
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
@@ -108,7 +118,6 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   console.log(`Processing Stripe payment: project=${projectId}, investor=${investorAddress}, amount=$${amountUSD}`);
 
   try {
-    // Get project to find security token
     const project = await publicClient.readContract({
       address: CONTRACTS.RWAProjectNFT as `0x${string}`,
       abi: RWAProjectNFTABI,
@@ -124,8 +133,8 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
       return;
     }
 
-    // Calculate token amount ($1 = 1 token, 18 decimals)
     const tokenAmount = parseUnits(amountUSD, 18);
+    const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
 
     if (!VERIFIER_PRIVATE_KEY) {
       console.error('VERIFIER_PRIVATE_KEY not configured');
@@ -137,10 +146,9 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     const walletClient = createWalletClient({
       account,
       chain: polygonAmoy,
-      transport: http('https://rpc-amoy.polygon.technology'),
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
     });
 
-    // Option 1: Use OffChainInvestmentManager if deployed
     if (CONTRACTS.OffChainInvestmentManager && CONTRACTS.OffChainInvestmentManager !== '') {
       const existingId = await publicClient.readContract({
         address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
@@ -166,11 +174,11 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
             BigInt(projectId),
             investorAddress as `0x${string}`,
             BigInt(Math.round(parseFloat(amountUSD) * 100)),
-            0, // PaymentMethod.Stripe
+            0,
             paymentIntent.id,
           ],
         });
-        
+
         await publicClient.waitForTransactionReceipt({ hash: createHash });
 
         const newId = await publicClient.readContract({
@@ -188,9 +196,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         });
         console.log(`Created and minted: ${mintHash}`);
       }
-    }
-    // Option 2: Direct token minting
-    else {
+    } else {
       const hash = await walletClient.writeContract({
         address: securityToken as `0x${string}`,
         abi: RWASecurityTokenABI,
@@ -213,7 +219,6 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
 }
 
 async function storeFailedPayment(paymentIntent: Stripe.PaymentIntent, reason: string) {
-  // TODO: Store in database for manual processing
   console.error('Failed payment - needs manual processing:', {
     paymentIntentId: paymentIntent.id,
     projectId: paymentIntent.metadata.projectId,
@@ -234,9 +239,11 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event;
 
   try {
+    const stripe = getStripe();
+    const webhookSecret = getWebhookSecret();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err);
+  } catch (err: any) {
+    console.error('Webhook signature verification failed:', err.message);
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 

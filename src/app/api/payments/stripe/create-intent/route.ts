@@ -2,15 +2,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-12-18.acacia',
-});
+// Lazy initialization to avoid build-time errors
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY not configured');
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2024-12-18.acacia',
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const stripe = getStripe();
     const { projectId, amountUSD, investorAddress, investorEmail } = await request.json();
 
-    // Validation
     if (!projectId || !amountUSD || !investorAddress) {
       return NextResponse.json(
         { error: 'Missing required fields: projectId, amountUSD, investorAddress' },
@@ -18,7 +24,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Minimum $100 investment
     if (amountUSD < 100) {
       return NextResponse.json(
         { error: 'Minimum investment is $100' },
@@ -26,10 +31,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert to cents for Stripe
     const amountCents = Math.round(amountUSD * 100);
 
-    // Create or retrieve customer
     let customerId: string | undefined;
     if (investorEmail) {
       const customers = await stripe.customers.list({
@@ -51,7 +54,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountCents,
       currency: 'usd',
@@ -73,10 +75,10 @@ export async function POST(request: NextRequest) {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Stripe create-intent error:', error);
     return NextResponse.json(
-      { error: 'Failed to create payment intent' },
+      { error: error.message || 'Failed to create payment intent' },
       { status: 500 }
     );
   }
