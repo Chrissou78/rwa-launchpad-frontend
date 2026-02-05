@@ -353,10 +353,9 @@ export default function StripeInvestment({
     }
   };
 
-  const handlePaymentSuccess = () => {
-    setStep('success');
-    setTimeout(() => onSuccess(), 10000);
-  };
+ const handlePaymentSuccess = () => {
+  setStep('success');
+};
 
   const handlePaymentError = (message: string) => {
     setError(message);
@@ -548,9 +547,12 @@ export default function StripeInvestment({
               <p className="text-slate-500 text-sm mt-4">
                 Tokens will be minted to your wallet shortly.
               </p>
-              <p className="text-slate-400 text-xs mt-2">
-                Closing automatically in a few seconds...
-              </p>
+              <button
+                onClick={onSuccess}
+                className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-xl text-white font-semibold transition mt-6"
+              >
+                Done
+              </button>
             </div>
           )}
 
