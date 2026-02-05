@@ -100,6 +100,16 @@ const RWAProjectNFTABI = [
       },
     ],
   },
+  {
+    name: 'updateTotalRaised',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_projectId', type: 'uint256' },
+      { name: '_totalRaised', type: 'uint256' },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 const publicClient = createPublicClient({
@@ -126,6 +136,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     }) as any;
 
     const securityToken = project.securityToken;
+    const currentTotalRaised = project.totalRaised as bigint;
 
     if (!securityToken || securityToken === ZERO_ADDRESS) {
       console.error('Project has no security token deployed');
@@ -134,6 +145,8 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     }
 
     const tokenAmount = parseUnits(amountUSD, 18);
+    // Convert amountUSD to USDC format (6 decimals) for totalRaised
+    const amountInUSDC = BigInt(Math.round(parseFloat(amountUSD) * 1e6));
     const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
 
     if (!VERIFIER_PRIVATE_KEY) {
@@ -149,6 +162,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
       transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
     });
 
+    // Step 1: Create investment and mint tokens
     if (CONTRACTS.OffChainInvestmentManager && CONTRACTS.OffChainInvestmentManager !== '') {
       const existingId = await publicClient.readContract({
         address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
@@ -165,6 +179,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           args: [existingId],
         });
         console.log(`Confirmed existing investment: ${hash}`);
+        await publicClient.waitForTransactionReceipt({ hash });
       } else {
         const createHash = await walletClient.writeContract({
           address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
@@ -195,6 +210,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           args: [newId],
         });
         console.log(`Created and minted: ${mintHash}`);
+        await publicClient.waitForTransactionReceipt({ hash: mintHash });
       }
     } else {
       const hash = await walletClient.writeContract({
@@ -209,9 +225,23 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         ],
       });
       console.log(`Minted tokens directly: ${hash}`);
+      await publicClient.waitForTransactionReceipt({ hash });
     }
 
-    console.log(`Successfully processed payment ${paymentIntent.id}`);
+    // Step 2: Update totalRaised on RWAProjectNFT
+    const newTotalRaised = currentTotalRaised + amountInUSDC;
+    console.log(`Updating totalRaised: ${currentTotalRaised} + ${amountInUSDC} = ${newTotalRaised}`);
+
+    const updateHash = await walletClient.writeContract({
+      address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+      abi: RWAProjectNFTABI,
+      functionName: 'updateTotalRaised',
+      args: [BigInt(projectId), newTotalRaised],
+    });
+    console.log(`Updated totalRaised: ${updateHash}`);
+    await publicClient.waitForTransactionReceipt({ hash: updateHash });
+
+    console.log(`Successfully processed payment ${paymentIntent.id} - totalRaised now: $${Number(newTotalRaised) / 1e6}`);
   } catch (error) {
     console.error('Failed to process payment:', error);
     await storeFailedPayment(paymentIntent, String(error));
