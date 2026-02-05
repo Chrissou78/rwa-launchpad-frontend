@@ -1,9 +1,9 @@
 // src/components/invest/StripeInvestment.tsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
-import { loadStripe, Stripe, StripeElements } from '@stripe/stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
   PaymentElement,
@@ -11,7 +11,6 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 
-// Initialize Stripe outside component to avoid re-initialization
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
 interface StripeInvestmentProps {
@@ -26,34 +25,20 @@ interface StripeInvestmentProps {
 
 type CheckoutStep = 'details' | 'payment' | 'processing' | 'success' | 'error';
 
-// Success animation component
 function SuccessAnimation() {
   return (
     <div className="flex flex-col items-center justify-center py-8">
-      <div className="relative">
-        <div className="w-24 h-24 rounded-full bg-green-500/20 flex items-center justify-center animate-pulse">
-          <div className="w-16 h-16 rounded-full bg-green-500/40 flex items-center justify-center">
-            <svg
-              className="w-10 h-10 text-green-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={3}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          </div>
+      <div className="w-24 h-24 rounded-full bg-green-500/20 flex items-center justify-center animate-pulse">
+        <div className="w-16 h-16 rounded-full bg-green-500/40 flex items-center justify-center">
+          <svg className="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
         </div>
       </div>
     </div>
   );
 }
 
-// Processing animation component
 function ProcessingAnimation() {
   return (
     <div className="flex flex-col items-center justify-center py-8">
@@ -65,7 +50,6 @@ function ProcessingAnimation() {
   );
 }
 
-// Step indicator component
 function StepIndicator({ currentStep }: { currentStep: CheckoutStep }) {
   const steps = [
     { key: 'details', label: 'Details' },
@@ -78,7 +62,6 @@ function StepIndicator({ currentStep }: { currentStep: CheckoutStep }) {
     const stepOrder = ['details', 'payment', 'processing', 'success'];
     const currentIndex = stepOrder.indexOf(currentStep === 'error' ? 'payment' : currentStep);
     const stepIndex = stepOrder.indexOf(stepKey);
-
     if (stepIndex < currentIndex) return 'completed';
     if (stepIndex === currentIndex) return 'current';
     return 'upcoming';
@@ -106,16 +89,12 @@ function StepIndicator({ currentStep }: { currentStep: CheckoutStep }) {
                 index + 1
               )}
             </div>
-            <span className={`text-xs mt-1 ${
-              getStepStatus(step.key) === 'current' ? 'text-purple-400' : 'text-slate-500'
-            }`}>
+            <span className={`text-xs mt-1 ${getStepStatus(step.key) === 'current' ? 'text-purple-400' : 'text-slate-500'}`}>
               {step.label}
             </span>
           </div>
           {index < steps.length - 1 && (
-            <div className={`w-12 h-0.5 mx-1 mt-[-16px] ${
-              getStepStatus(steps[index + 1].key) !== 'upcoming' ? 'bg-green-500' : 'bg-slate-700'
-            }`} />
+            <div className={`w-12 h-0.5 mx-1 mt-[-16px] ${getStepStatus(steps[index + 1].key) !== 'upcoming' ? 'bg-green-500' : 'bg-slate-700'}`} />
           )}
         </div>
       ))}
@@ -123,67 +102,73 @@ function StepIndicator({ currentStep }: { currentStep: CheckoutStep }) {
   );
 }
 
-// Separate inner component that uses Stripe hooks
-function CheckoutFormInner({
+// The actual payment form that uses Stripe hooks
+function PaymentFormContent({
   projectId,
   amount,
   tokenAmount,
   onSuccess,
   onError,
   onBack,
+  onProcessing,
 }: {
   projectId: number;
   amount: number;
   tokenAmount: number;
   onSuccess: () => void;
-  onError: (message: string) => void;
+  onError: (msg: string) => void;
   onBack: () => void;
+  onProcessing: (p: boolean) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [isElementReady, setIsElementReady] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cardComplete, setCardComplete] = useState(false);
-
-  // Double-check readiness
-  const isFullyReady = stripe && elements && isElementReady && cardComplete;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const paymentElementRef = useRef<boolean>(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
+    
+    if (isSubmitting) return;
+    
+    console.log('Form submitted, checking state...');
+    console.log('stripe:', !!stripe);
+    console.log('elements:', !!elements);
+    console.log('cardComplete:', cardComplete);
+    console.log('paymentElementRef:', paymentElementRef.current);
 
-    console.log('Submit clicked - state:', { 
-      stripe: !!stripe, 
-      elements: !!elements, 
-      isElementReady, 
-      cardComplete 
-    });
-
-    if (!stripe || !elements) {
-      setErrorMessage('Payment system not loaded. Please refresh the page.');
+    if (!stripe) {
+      setErrorMessage('Stripe is not loaded. Please refresh the page.');
       return;
     }
 
-    if (!isElementReady) {
-      setErrorMessage('Payment form is still loading. Please wait.');
+    if (!elements) {
+      setErrorMessage('Payment form not initialized. Please refresh the page.');
       return;
     }
 
     if (!cardComplete) {
-      setErrorMessage('Please complete your card details.');
+      setErrorMessage('Please fill in your card details completely.');
       return;
     }
 
-    setIsProcessing(true);
-
-    // Small delay to ensure everything is mounted
-    await new Promise(resolve => setTimeout(resolve, 100));
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    onProcessing(true);
 
     try {
-      console.log('Calling confirmPayment...');
+      // Get the payment element to ensure it exists
+      const paymentElement = elements.getElement('payment');
+      console.log('paymentElement from getElement:', paymentElement);
+
+      if (!paymentElement) {
+        throw new Error('Payment element not found. Please refresh and try again.');
+      }
+
+      console.log('Calling stripe.confirmPayment...');
       
-      const result = await stripe.confirmPayment({
+      const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/projects/${projectId}?payment=success`,
@@ -191,42 +176,31 @@ function CheckoutFormInner({
         redirect: 'if_required',
       });
 
-      console.log('confirmPayment result:', result);
-
-      if (result.error) {
-        console.error('Payment error:', result.error);
-        setErrorMessage(result.error.message || 'Payment failed. Please try again.');
-        setIsProcessing(false);
-      } else if (result.paymentIntent) {
-        console.log('Payment intent status:', result.paymentIntent.status);
-        if (result.paymentIntent.status === 'succeeded' || result.paymentIntent.status === 'processing') {
+      if (error) {
+        console.error('Stripe error:', error);
+        setErrorMessage(error.message || 'Payment failed.');
+        setIsSubmitting(false);
+        onProcessing(false);
+      } else if (paymentIntent) {
+        console.log('Payment intent:', paymentIntent.status);
+        if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
           onSuccess();
         } else {
-          setErrorMessage(`Payment status: ${result.paymentIntent.status}`);
-          setIsProcessing(false);
+          setErrorMessage(`Unexpected payment status: ${paymentIntent.status}`);
+          setIsSubmitting(false);
+          onProcessing(false);
         }
       }
     } catch (err: any) {
-      console.error('Payment exception:', err);
-      setErrorMessage(err.message || 'An unexpected error occurred.');
-      setIsProcessing(false);
+      console.error('Exception:', err);
+      setErrorMessage(err.message || 'An error occurred.');
+      setIsSubmitting(false);
+      onProcessing(false);
     }
   };
 
-  if (isProcessing) {
-    return (
-      <div className="text-center py-4">
-        <ProcessingAnimation />
-        <h4 className="text-xl font-semibold text-white mt-4">Processing Payment</h4>
-        <p className="text-slate-400 mt-2">Please wait while we confirm your payment...</p>
-        <p className="text-slate-500 text-sm mt-4">Do not close this window</p>
-      </div>
-    );
-  }
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Order Summary */}
       <div className="bg-slate-700/50 rounded-xl p-4 space-y-3">
         <h4 className="text-sm font-medium text-slate-300">Order Summary</h4>
         <div className="flex justify-between text-sm">
@@ -243,15 +217,15 @@ function CheckoutFormInner({
         </div>
       </div>
 
-      {/* Stripe Payment Element */}
-      <div className="bg-slate-700/30 rounded-xl p-4 min-h-[200px]">
+      <div className="bg-slate-700/30 rounded-xl p-4">
         <PaymentElement
-          onReady={() => {
-            console.log('PaymentElement onReady fired');
-            setIsElementReady(true);
+          id="payment-element"
+          onReady={(element) => {
+            console.log('PaymentElement READY', element);
+            paymentElementRef.current = true;
           }}
           onChange={(event) => {
-            console.log('PaymentElement onChange:', event.complete, event.empty);
+            console.log('PaymentElement change - complete:', event.complete);
             setCardComplete(event.complete);
             if (event.complete) {
               setErrorMessage(null);
@@ -263,101 +237,38 @@ function CheckoutFormInner({
         />
       </div>
 
-      {!isElementReady && (
-        <div className="flex items-center justify-center gap-2 text-slate-400 py-2">
-          <span className="animate-spin w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full" />
-          <span className="text-sm">Loading payment form...</span>
-        </div>
-      )}
-
-      {isElementReady && !cardComplete && (
-        <p className="text-slate-400 text-sm text-center">
-          Enter your card details above
-        </p>
-      )}
-
       {errorMessage && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-start gap-2">
-          <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
           <p className="text-red-400 text-sm">{errorMessage}</p>
         </div>
       )}
 
       <button
         type="submit"
-        disabled={!isFullyReady}
+        disabled={!stripe || !cardComplete || isSubmitting}
         className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed rounded-xl text-white font-semibold transition flex items-center justify-center gap-2"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-        </svg>
-        {!isElementReady ? 'Loading...' : !cardComplete ? 'Enter card details' : `Pay $${amount.toLocaleString()}`}
+        {isSubmitting ? (
+          <>
+            <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+            Processing...
+          </>
+        ) : !cardComplete ? (
+          'Enter card details'
+        ) : (
+          <>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Pay ${amount.toLocaleString()}
+          </>
+        )}
       </button>
 
-      <button
-        type="button"
-        onClick={onBack}
-        className="w-full text-slate-400 hover:text-white text-sm transition py-2"
-      >
+      <button type="button" onClick={onBack} disabled={isSubmitting} className="w-full text-slate-400 hover:text-white text-sm transition py-2 disabled:opacity-50">
         ← Back to details
       </button>
-
-      <p className="text-slate-500 text-xs text-center flex items-center justify-center gap-1">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-        </svg>
-        Secured by Stripe
-      </p>
     </form>
-  );
-}
-
-// Wrapper component that provides Elements context
-function CheckoutForm({
-  clientSecret,
-  projectId,
-  amount,
-  tokenAmount,
-  onSuccess,
-  onError,
-  onBack,
-}: {
-  clientSecret: string;
-  projectId: number;
-  amount: number;
-  tokenAmount: number;
-  onSuccess: () => void;
-  onError: (message: string) => void;
-  onBack: () => void;
-}) {
-  return (
-    <Elements
-      stripe={stripePromise}
-      options={{
-        clientSecret,
-        appearance: {
-          theme: 'night',
-          variables: {
-            colorPrimary: '#a855f7',
-            colorBackground: '#1e293b',
-            colorText: '#f1f5f9',
-            colorDanger: '#ef4444',
-            borderRadius: '8px',
-          },
-        },
-      }}
-    >
-      <CheckoutFormInner
-        projectId={projectId}
-        amount={amount}
-        tokenAmount={tokenAmount}
-        onSuccess={onSuccess}
-        onError={onError}
-        onBack={onBack}
-      />
-    </Elements>
   );
 }
 
@@ -379,24 +290,22 @@ export default function StripeInvestment({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const amountNum = Number(amount) || 0;
   const tokenAmount = tokenPrice > 0 ? Math.floor((amountNum * 100) / tokenPrice) : 0;
   const isValidAmount = amountNum >= minInvestment && amountNum <= maxInvestment;
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  // Fetch email from KYC on mount
   useEffect(() => {
     async function fetchKYCEmail() {
       if (!address) {
         setLoadingEmail(false);
         return;
       }
-
       try {
         const response = await fetch(`/api/kyc/email/${address}`);
         const data = await response.json();
-
         if (data.found && data.email) {
           setEmail(data.email);
           setEmailFromKYC(true);
@@ -407,7 +316,6 @@ export default function StripeInvestment({
         setLoadingEmail(false);
       }
     }
-
     fetchKYCEmail();
   }, [address]);
 
@@ -435,6 +343,7 @@ export default function StripeInvestment({
         throw new Error(data.error || 'Failed to create payment');
       }
 
+      console.log('Payment intent created, clientSecret received');
       setClientSecret(data.clientSecret);
       setStep('payment');
     } catch (err) {
@@ -446,9 +355,7 @@ export default function StripeInvestment({
 
   const handlePaymentSuccess = () => {
     setStep('success');
-    setTimeout(() => {
-      onSuccess();
-    }, 3000);
+    setTimeout(() => onSuccess(), 3000);
   };
 
   const handlePaymentError = (message: string) => {
@@ -457,25 +364,22 @@ export default function StripeInvestment({
   };
 
   const handleClose = () => {
-    if (step === 'processing') return;
+    if (isProcessing) return;
     onCancel();
   };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-2xl max-w-md w-full border border-slate-700 shadow-2xl overflow-hidden">
+      <div className="bg-slate-800 rounded-2xl max-w-md w-full border border-slate-700 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-b border-slate-700 p-4">
+        <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-b border-slate-700 p-4 sticky top-0 bg-slate-800/95 backdrop-blur z-10">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold text-white">Invest in {projectName}</h3>
               <p className="text-slate-400 text-sm">Secure card payment</p>
             </div>
-            {step !== 'processing' && (
-              <button
-                onClick={handleClose}
-                className="text-slate-400 hover:text-white transition p-1 hover:bg-slate-700 rounded-lg"
-              >
+            {!isProcessing && (
+              <button onClick={handleClose} className="text-slate-400 hover:text-white transition p-1 hover:bg-slate-700 rounded-lg">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -486,29 +390,24 @@ export default function StripeInvestment({
 
         {/* Content */}
         <div className="p-6">
-          {step !== 'error' && <StepIndicator currentStep={step} />}
+          {step !== 'error' && step !== 'processing' && <StepIndicator currentStep={step} />}
 
-          {/* Step: Details */}
+          {/* Details Step */}
           {step === 'details' && (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-2">Email Address</label>
                 {loadingEmail ? (
-                  <div className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-slate-400">
-                    <span className="flex items-center gap-2">
-                      <span className="animate-spin w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full" />
-                      Loading...
-                    </span>
+                  <div className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-slate-400 flex items-center gap-2">
+                    <span className="animate-spin w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full" />
+                    Loading...
                   </div>
                 ) : (
                   <>
                     <input
                       type="email"
                       value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        setEmailFromKYC(false);
-                      }}
+                      onChange={(e) => { setEmail(e.target.value); setEmailFromKYC(false); }}
                       placeholder="your@email.com"
                       className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition"
                     />
@@ -517,7 +416,7 @@ export default function StripeInvestment({
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                        Pre-filled from your KYC verification
+                        Pre-filled from KYC
                       </p>
                     )}
                   </>
@@ -581,38 +480,61 @@ export default function StripeInvestment({
                 )}
               </button>
 
-              <button
-                onClick={onCancel}
-                className="w-full text-slate-400 hover:text-white text-sm transition py-2"
-              >
+              <button onClick={onCancel} className="w-full text-slate-400 hover:text-white text-sm transition py-2">
                 ← Choose different method
               </button>
             </div>
           )}
 
-          {/* Step: Payment */}
+          {/* Payment Step */}
           {step === 'payment' && clientSecret && (
-            <CheckoutForm
-              clientSecret={clientSecret}
-              projectId={projectId}
-              amount={amountNum}
-              tokenAmount={tokenAmount}
-              onSuccess={handlePaymentSuccess}
-              onError={handlePaymentError}
-              onBack={() => {
-                setClientSecret(null);
-                setStep('details');
+            <Elements
+              key={clientSecret}
+              stripe={stripePromise}
+              options={{
+                clientSecret,
+                appearance: {
+                  theme: 'night',
+                  variables: {
+                    colorPrimary: '#a855f7',
+                    colorBackground: '#1e293b',
+                    colorText: '#f1f5f9',
+                    colorDanger: '#ef4444',
+                    borderRadius: '8px',
+                  },
+                },
               }}
-            />
+            >
+              <PaymentFormContent
+                projectId={projectId}
+                amount={amountNum}
+                tokenAmount={tokenAmount}
+                onSuccess={handlePaymentSuccess}
+                onError={handlePaymentError}
+                onBack={() => {
+                  setClientSecret(null);
+                  setStep('details');
+                }}
+                onProcessing={setIsProcessing}
+              />
+            </Elements>
           )}
 
-          {/* Step: Success */}
+          {/* Processing Step */}
+          {step === 'processing' && (
+            <div className="text-center py-4">
+              <ProcessingAnimation />
+              <h4 className="text-xl font-semibold text-white mt-4">Processing Payment</h4>
+              <p className="text-slate-400 mt-2">Please wait...</p>
+            </div>
+          )}
+
+          {/* Success Step */}
           {step === 'success' && (
             <div className="text-center py-4">
               <SuccessAnimation />
               <h4 className="text-xl font-semibold text-green-400 mt-4">Payment Successful!</h4>
               <p className="text-slate-300 mt-2">Your investment has been processed.</p>
-
               <div className="bg-slate-700/50 rounded-xl p-4 mt-6 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Amount Invested</span>
@@ -623,19 +545,14 @@ export default function StripeInvestment({
                   <span className="text-green-400 font-semibold">{tokenAmount.toLocaleString()}</span>
                 </div>
               </div>
-
-              <p className="text-slate-500 text-sm mt-4">Tokens will be minted to your wallet shortly.</p>
-
-              <button
-                onClick={onSuccess}
-                className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-xl text-white font-semibold transition mt-6"
-              >
+              <p className="text-slate-500 text-sm mt-4">Tokens will be minted shortly.</p>
+              <button onClick={onSuccess} className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-xl text-white font-semibold transition mt-6">
                 Done
               </button>
             </div>
           )}
 
-          {/* Step: Error */}
+          {/* Error Step */}
           {step === 'error' && (
             <div className="text-center py-4">
               <div className="w-20 h-20 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
@@ -643,24 +560,13 @@ export default function StripeInvestment({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-
               <h4 className="text-xl font-semibold text-red-400 mt-4">Payment Failed</h4>
               <p className="text-slate-400 mt-2">{error || 'Something went wrong.'}</p>
-
               <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => {
-                    setError(null);
-                    setStep('payment');
-                  }}
-                  className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-semibold transition"
-                >
+                <button onClick={() => { setError(null); setStep('payment'); }} className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-semibold transition">
                   Try Again
                 </button>
-                <button
-                  onClick={onCancel}
-                  className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl text-white font-semibold transition"
-                >
+                <button onClick={onCancel} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl text-white font-semibold transition">
                   Cancel
                 </button>
               </div>
@@ -674,8 +580,6 @@ export default function StripeInvestment({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
-            <span>256-bit SSL Encryption</span>
-            <span className="mx-2">•</span>
             <span>Powered by Stripe</span>
           </div>
         </div>
