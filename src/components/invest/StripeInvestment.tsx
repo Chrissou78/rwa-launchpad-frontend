@@ -153,12 +153,16 @@ function PaymentForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!stripe || !elements) return;
+    if (!stripe || !elements) {
+      console.error('Stripe not loaded');
+      return;
+    }
 
     onProcessing(true);
+    console.log('Starting payment confirmation...');
 
     try {
-      const { error, paymentIntent } = await stripe.confirmPayment({
+      const result = await stripe.confirmPayment({
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/projects/${projectId}?payment=success`,
@@ -166,13 +170,22 @@ function PaymentForm({
         redirect: 'if_required',
       });
 
-      if (error) {
-        onError(error.message || 'Payment failed. Please try again.');
+      console.log('Stripe result:', result);
+
+      if (result.error) {
+        console.error('Payment error:', result.error);
+        onError(result.error.message || 'Payment failed. Please try again.');
         onProcessing(false);
-      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+      } else if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
+        console.log('Payment succeeded:', result.paymentIntent.id);
         onSuccess();
+      } else {
+        console.log('Unexpected result:', result);
+        onError('Payment status: ' + (result.paymentIntent?.status || 'unknown'));
+        onProcessing(false);
       }
     } catch (err) {
+      console.error('Payment exception:', err);
       onError('An unexpected error occurred. Please try again.');
       onProcessing(false);
     }
