@@ -1109,7 +1109,7 @@ function ProjectPageContent() {
                               address: CONTRACTS.RWAProjectNFT as `0x${string}`,
                               abi: RWAProjectNFTABI,
                               functionName: 'getProject',
-                              args: [BigInt(params.id)],
+                              args: [BigInt(projectId)],
                             }) as Project;
                             
                             const onChainTotal = Number(projectData.totalRaised) / 1e6;
