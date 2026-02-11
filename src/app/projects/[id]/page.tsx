@@ -395,11 +395,15 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
 
   const needsApproval = allowance < amountInWei;
   const amountNum = Number(amount) || 0;
+  const balanceNum = Number(formatUnits(balance, token.decimals));
   
   const isValidAmount =
     amountNum >= minInvestment &&
     amountNum <= effectiveMaxInvestment &&
     amountInWei <= balance;
+
+  // Calculate the actual max user can invest (limited by their balance too)
+  const maxUserCanInvest = Math.min(effectiveMaxInvestment, balanceNum);
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -444,11 +448,33 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
               {selectedToken}
             </span>
           </div>
-          <div className="flex justify-between text-xs text-slate-400 mt-1">
-            <span>
-              Min: ${minInvestment.toLocaleString()} / Max: ${effectiveMaxInvestment.toLocaleString()}
-            </span>
-            <span>Balance: {formatUnits(balance, token.decimals)}</span>
+          
+          {/* Clickable Min/Max buttons */}
+          <div className="flex justify-between items-center text-xs mt-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAmount(minInvestment.toString())}
+                className="px-2 py-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-blue-500 rounded text-slate-300 hover:text-white transition"
+              >
+                Min: ${minInvestment.toLocaleString()}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAmount(effectiveMaxInvestment.toString())}
+                className="px-2 py-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-blue-500 rounded text-slate-300 hover:text-white transition"
+              >
+                Max: ${effectiveMaxInvestment.toLocaleString()}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAmount(maxUserCanInvest.toString())}
+              className="px-2 py-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-green-500 rounded text-slate-300 hover:text-green-400 transition"
+              title="Use maximum amount based on your balance"
+            >
+              Balance: {balanceNum.toLocaleString()}
+            </button>
           </div>
         </div>
 
