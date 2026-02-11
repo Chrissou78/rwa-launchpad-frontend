@@ -348,7 +348,7 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
             address: token.address,
             abi: ERC20ABI,
             functionName: 'allowance',
-            args: [address, CONTRACTS.EscrowVault as Address],
+            args: [address, project.escrowVault as Address],
           }),
         ]);
         setBalance(bal as bigint);
@@ -380,13 +380,21 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
       address: token.address,
       abi: ERC20ABI,
       functionName: 'approve',
-      args: [CONTRACTS.EscrowVault as Address, amountInWei],
+      args: [project.escrowVault as Address, amountInWei],
     });
   };
 
   const handleInvest = () => {
+    console.log('Investing with params:', {
+      escrowVault: project.escrowVault,
+      projectId: project.id.toString(),
+      tokenAddress: token.address,
+      amountInWei: amountInWei.toString(),
+      amountNum: amountNum,
+    });
+    
     invest({
-      address: CONTRACTS.EscrowVault as Address,
+      address: project.escrowVault as Address,
       abi: EscrowVaultABI,
       functionName: 'investWithToken',
       args: [project.id, token.address, amountInWei],
@@ -565,7 +573,7 @@ function RefundSection({ project, investorDetails, onRefundSuccess }: RefundSect
 
   const handleRefund = () => {
     claimRefund({
-      address: CONTRACTS.EscrowVault as Address,
+      address: project.escrowVault as Address,
       abi: EscrowVaultABI,
       functionName: 'claimRefund',
       args: [project.id],
