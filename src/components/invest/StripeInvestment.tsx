@@ -353,9 +353,9 @@ export default function StripeInvestment({
     }
   };
 
- const handlePaymentSuccess = () => {
-  setStep('success');
-};
+  const handlePaymentSuccess = () => {
+    setStep('success');
+  };
 
   const handlePaymentError = (message: string) => {
     setError(message);
@@ -436,11 +436,36 @@ export default function StripeInvestment({
                     className="w-full bg-slate-700 border border-slate-600 rounded-lg pl-10 pr-4 py-3 text-white text-lg placeholder-slate-400 focus:outline-none focus:border-purple-500 transition"
                   />
                 </div>
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>Min: ${minInvestment.toLocaleString()}</span>
-                  <span>Max: ${maxInvestment.toLocaleString()}</span>
+                
+                {/* Clickable Min/Max buttons */}
+                <div className="flex justify-between items-center mt-2">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAmount(minInvestment.toString())}
+                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-purple-500 rounded-lg text-xs text-slate-300 hover:text-white transition"
+                    >
+                      Min: ${minInvestment.toLocaleString()}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAmount(maxInvestment.toString())}
+                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-purple-500 rounded-lg text-xs text-slate-300 hover:text-white transition"
+                    >
+                      Max: ${maxInvestment.toLocaleString()}
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* Show remaining capacity info */}
+              {maxInvestment < 10000 && (
+                <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                  <p className="text-purple-400 text-sm">
+                    💡 Only ${maxInvestment.toLocaleString()} remaining to reach the funding goal.
+                  </p>
+                </div>
+              )}
 
               {amountNum > 0 && tokenPrice > 0 && (
                 <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-4">
@@ -462,6 +487,15 @@ export default function StripeInvestment({
                 <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
                   <p className="text-red-400 text-sm">{error}</p>
                 </div>
+              )}
+
+              {/* Validation error messages */}
+              {!isValidAmount && amount && (
+                <p className="text-red-400 text-sm text-center">
+                  {amountNum < minInvestment
+                    ? `Minimum investment is $${minInvestment.toLocaleString()}`
+                    : `Maximum investment is $${maxInvestment.toLocaleString()}`}
+                </p>
               )}
 
               <button
