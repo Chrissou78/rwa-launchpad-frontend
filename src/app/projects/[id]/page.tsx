@@ -694,6 +694,7 @@ function ProjectPageContent() {
   const projectId = params?.id as string;
 
   const { address, isConnected } = useAccount();
+  const { kycData, tierInfo } = useKYC(); // Get KYC data from context
 
   const [project, setProject] = useState<Project | null>(null);
   const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
@@ -706,11 +707,7 @@ function ProjectPageContent() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [pendingInvestment, setPendingInvestment] = useState<number>(0);
 
-  // === ADDED: KYC State ===
-  const [isKYCVerified, setIsKYCVerified] = useState(false);
-  const [kycLoading, setKycLoading] = useState(true);
-  const { kycData, tierInfo, canInvest: checkKYCLimit } = useKYC();
-
+  // NO useState for KYC - we derive from context instead
 
   // Handle payment redirect
   useEffect(() => {
@@ -846,53 +843,7 @@ function ProjectPageContent() {
     }
   }, [paymentSuccess]);
 
-  // === ADDED: KYC Check Effect ===
-  useEffect(() => {
-    const checkKYC = async () => {
-      if (!address || !project?.securityToken || project.securityToken === ZERO_ADDRESS) {
-        setKycLoading(false);
-        setIsKYCVerified(false);
-        return;
-      }
-
-      try {
-        // Get IdentityRegistry address from the project's security token
-        const identityRegistryAddress = await publicClient.readContract({
-          address: project.securityToken as Address,
-          abi: RWASecurityTokenABI,
-          functionName: 'identityRegistry',
-        });
-
-        console.log('Project security token:', project.securityToken);
-        console.log('Identity Registry:', identityRegistryAddress);
-
-        if (!identityRegistryAddress || identityRegistryAddress === ZERO_ADDRESS) {
-          console.log('No identity registry found');
-          setIsKYCVerified(false);
-          setKycLoading(false);
-          return;
-        }
-
-        // Check if user is verified in that registry
-        const verified = await publicClient.readContract({
-          address: identityRegistryAddress as Address,
-          abi: IdentityRegistryABI,
-          functionName: 'isVerified',
-          args: [address],
-        });
-
-        console.log('KYC verified:', verified);
-        setIsKYCVerified(verified as boolean);
-      } catch (err) {
-        console.error('KYC check failed:', err);
-        setIsKYCVerified(false);
-      } finally {
-        setKycLoading(false);
-      }
-    };
-
-    checkKYC();
-  }, [address, project?.securityToken]);
+  // NO useEffect for KYC check - we use context instead
 
   const projectName = metadata?.name || tokenInfo?.name || `Project #${projectId}`;
   const description = metadata?.description || 'No description available.';
@@ -903,6 +854,8 @@ function ProjectPageContent() {
   const onChainRaisedUSD = project ? Number(project.totalRaised) / 1e6 : 0;
   const totalRaisedUSD = onChainRaisedUSD + pendingInvestment;
   const remainingCapacity = Math.max(0, fundingGoalUSD - totalRaisedUSD);
+  
+  // KYC limit from context
   const kycRemainingLimit = kycData.tier === 'Diamond' ? Infinity : kycData.remainingLimit;
   const effectiveMaxInvestment = project 
     ? Math.min(Number(project.maxInvestment), remainingCapacity, kycRemainingLimit) 
@@ -918,12 +871,14 @@ function ProjectPageContent() {
   const isCancelled = project?.status === 6;
   const isFailed = project?.status === 7;
   
-  // === MODIFIED: canInvest now includes KYC check ===
+  // KYC derived from context (not useState)
   const isKYCVerified = kycData.status === 'Approved' && kycData.tier !== 'None';
-  const canInvest = project?.status === 2 && !isExpired && remainingCapacity > 0 && isKYCVerified && kycRemainingLimit > 0;
-  const showKYCWarning = isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0 && !isKYCVerified;
+  const kycLoading = kycData.isLoading;
   
-  // === ADDED: Show KYC warning when not verified but otherwise can invest ===
+  // canInvest includes KYC check
+  const canInvest = project?.status === 2 && !isExpired && remainingCapacity > 0 && isKYCVerified && kycRemainingLimit > 0;
+  
+  // Show KYC warning when not verified but otherwise can invest
   const showKYCWarning = !kycLoading && !isKYCVerified && isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0;
 
   const tokenPrice = 100; // cents
