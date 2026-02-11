@@ -442,9 +442,9 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 pr-20 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
               {selectedToken}
             </span>
           </div>
