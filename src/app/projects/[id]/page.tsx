@@ -395,9 +395,12 @@ function InvestModal({ project, projectName, onClose, onSuccess }: InvestModalPr
 
   const needsApproval = allowance < amountInWei;
   const amountNum = Number(amount) || 0;
+  const remainingCapacity = Number(project.fundingGoal) - Number(project.totalRaised) / 1e6;
+  const effectiveMaxInvestment = Math.min(Number(project.maxInvestment), remainingCapacity);
+
   const isValidAmount =
     amountNum >= Number(minInvestment) &&
-    amountNum <= Number(maxInvestment) &&
+    amountNum <= effectiveMaxInvestment &&
     amountInWei <= balance;
 
   return (
@@ -1088,7 +1091,7 @@ function ProjectPageContent() {
                       projectId={Number(projectId)}
                       projectName={projectName}
                       minInvestment={Number(project.minInvestment)}
-                      maxInvestment={Number(project.maxInvestment)}
+                      maxInvestment={Math.min(Number(project.maxInvestment), fundingGoalUSD - totalRaisedUSD)}
                       tokenPrice={tokenPrice}
                      onSuccess={(amountInvested) => {
                       // Add optimistic amount
