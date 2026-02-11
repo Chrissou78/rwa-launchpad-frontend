@@ -1,69 +1,68 @@
 // src/app/projects/[id]/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense, useCallback } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, formatUnits, parseUnits, Address } from 'viem';
 import { polygonAmoy } from 'viem/chains';
+import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
+import Header from '@/components/Header';
+import StripeInvestment from '@/components/invest/StripeInvestment';
 
-// Constants
+// ============================================================================
+// CONSTANTS & CONFIG
+// ============================================================================
+
+const publicClient = createPublicClient({
+  chain: polygonAmoy,
+  transport: http('https://rpc-amoy.polygon.technology'),
+});
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-const RPC_URL = 'https://rpc-amoy.polygon.technology';
-const EXPLORER_URL = 'https://amoy.polygonscan.com';
 
-// Token definitions
-const TOKENS = {
-  USDC: {
-    address: '0xEd589B57e559874A5202a0FB82406c46A2116675',
-    symbol: 'USDC',
-    decimals: 6,
-  },
-  USDT: {
-    address: '0xfa86C7c30840694293a5c997f399d00A4eD3cDD8',
-    symbol: 'USDT',
-    decimals: 6,
-  },
-} as const;
+const TOKENS: Record<string, { address: Address; symbol: string; decimals: number }> = {
+  USDC: { address: CONTRACTS.USDC as Address, symbol: 'USDC', decimals: 6 },
+  USDT: { address: CONTRACTS.USDT as Address, symbol: 'USDT', decimals: 6 },
+};
 
+const STATUS_LABELS: Record<number, string> = {
+  0: 'Draft',
+  1: 'Pending',
+  2: 'Active',
+  3: 'Funded',
+  4: 'In Progress',
+  5: 'Completed',
+  6: 'Cancelled',
+  7: 'Failed',
+};
+
+const STATUS_COLORS: Record<number, string> = {
+  0: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  1: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  2: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  3: 'bg-green-500/20 text-green-400 border-green-500/30',
+  4: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  5: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  6: 'bg-red-500/20 text-red-400 border-red-500/30',
+  7: 'bg-red-500/20 text-red-400 border-red-500/30',
+};
+
+// ============================================================================
 // ABIs
-const ERC20ABI = [
-  {
-    inputs: [{ name: 'account', type: 'address' }],
-    name: 'balanceOf',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' },
-    ],
-    name: 'allowance',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    name: 'approve',
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-] as const;
+// ============================================================================
 
 const RWAProjectNFTABI = [
   {
-    inputs: [{ name: 'projectId', type: 'uint256' }],
     name: 'getProject',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
     outputs: [
       {
+        name: 'project',
+        type: 'tuple',
         components: [
           { name: 'id', type: 'uint256' },
           { name: 'owner', type: 'address' },
@@ -76,87 +75,164 @@ const RWAProjectNFTABI = [
           { name: 'status', type: 'uint8' },
           { name: 'securityToken', type: 'address' },
           { name: 'escrowVault', type: 'address' },
-          { name: 'compliance', type: 'address' },
+          { name: 'createdAt', type: 'uint256' },
+          { name: 'completedAt', type: 'uint256' },
+          { name: 'transferable', type: 'bool' },
         ],
-        name: '',
-        type: 'tuple',
       },
     ],
-    stateMutability: 'view',
-    type: 'function',
   },
 ] as const;
 
 const EscrowVaultABI = [
   {
+    name: 'getProjectFunding',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [
+      { name: 'totalDeposited', type: 'uint256' },
+      { name: 'fundingGoal', type: 'uint256' },
+      { name: 'isComplete', type: 'bool' },
+      { name: 'refundsEnabled', type: 'bool' },
+    ],
+  },
+  {
+    name: 'getInvestorDeposit',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'investor', type: 'address' },
+    ],
+    outputs: [{ name: 'amount', type: 'uint256' }],
+  },
+  {
+    name: 'investWithToken',
+    type: 'function',
+    stateMutability: 'nonpayable',
     inputs: [
       { name: 'projectId', type: 'uint256' },
       { name: 'token', type: 'address' },
       { name: 'amount', type: 'uint256' },
     ],
-    name: 'investWithToken',
     outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
   },
   {
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    name: 'getProjectFunding',
-    outputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'fundingGoal', type: 'uint256' },
-      { name: 'totalRaised', type: 'uint256' },
-      { name: 'minInvestment', type: 'uint256' },
-      { name: 'maxInvestment', type: 'uint256' },
-      { name: 'deadline', type: 'uint256' },
-      { name: 'fundingComplete', type: 'bool' },
-      { name: 'refundsEnabled', type: 'bool' },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ name: 'projectId', type: 'uint256' }],
     name: 'claimRefund',
-    outputs: [],
+    type: 'function',
     stateMutability: 'nonpayable',
-    type: 'function',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [],
   },
 ] as const;
 
-const SecurityTokenABI = [
+const ERC20ABI = [
   {
-    inputs: [],
-    name: 'identityRegistry',
-    outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
+    name: 'balanceOf',
     type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'decimals',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+  {
+    name: 'symbol',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    name: 'name',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
   },
 ] as const;
 
+const RWASecurityTokenABI = [
+  {
+    name: 'name',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    name: 'symbol',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'totalSupply',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  // === ADDED: identityRegistry function ===
+  {
+    name: 'identityRegistry',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+] as const;
+
+// === ADDED: IdentityRegistry ABI ===
 const IdentityRegistryABI = [
   {
-    inputs: [{ name: 'userAddress', type: 'address' }],
     name: 'isVerified',
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'view',
     type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'userAddress', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
   },
 ] as const;
 
-// Contract addresses
-const CONTRACTS = {
-  RWAProjectNFT: '0x4497e4EA43C1A1Cd2B719fF0E4cea376364c1315',
-};
+// ============================================================================
+// TYPES
+// ============================================================================
 
-// Public client
-const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(RPC_URL),
-});
-
-// Types
-interface ProjectData {
+interface Project {
   id: bigint;
   owner: string;
   metadataURI: string;
@@ -168,406 +244,100 @@ interface ProjectData {
   status: number;
   securityToken: string;
   escrowVault: string;
-  compliance: string;
+  createdAt: bigint;
+  completedAt: bigint;
+  transferable: boolean;
 }
 
 interface ProjectMetadata {
-  name: string;
-  description: string;
-  image: string;
-  category: string;
-  location: string;
-  expectedReturns: string;
-  documents?: Array<{ name: string; url: string }>;
-}
-
-interface InvestModalProps {
-  project: ProjectData;
-  projectName: string;
-  effectiveMaxInvestment: number;
-  onClose: () => void;
-  onSuccess: (amount: number) => void;
-}
-
-// Helper functions
-const getStatusText = (status: number): string => {
-  const statuses = ['Pending', 'Active', 'Active', 'Funded', 'Cancelled', 'Completed'];
-  return statuses[status] || 'Unknown';
-};
-
-const getStatusColor = (status: number): string => {
-  const colors: Record<number, string> = {
-    0: 'bg-yellow-500',
-    1: 'bg-blue-500',
-    2: 'bg-green-500',
-    3: 'bg-purple-500',
-    4: 'bg-red-500',
-    5: 'bg-gray-500',
+  name?: string;
+  description?: string;
+  image?: string;
+  external_url?: string;
+  attributes?: Array<{ trait_type: string; value: string | number }>;
+  properties?: {
+    category?: string;
+    tokenSymbol?: string;
+    tokenName?: string;
+    investorSharePercent?: number;
+    projectedROI?: number;
+    roiTimelineMonths?: number;
+    platformFeePercent?: number;
   };
-  return colors[status] || 'bg-gray-500';
-};
+  documents?: {
+    pitchDeck?: string;
+    legalDocs?: string[];
+  };
+}
 
-const formatDate = (timestamp: bigint): string => {
-  return new Date(Number(timestamp) * 1000).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-};
+interface InvestorDetails {
+  deposit: bigint;
+  refundsEnabled: boolean;
+  tokenBalance: bigint;
+}
 
-const formatCurrency = (amount: number): string => {
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function formatUSD(amount: bigint): string {
+  const num = Number(amount);
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
-};
-
-// InvestModal Component
-function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, onSuccess }: InvestModalProps) {
-  const { address } = useAccount();
-  const [amount, setAmount] = useState('');
-  const [token, setToken] = useState(TOKENS.USDC);
-  const [balance, setBalance] = useState<bigint>(0n);
-  const [allowance, setAllowance] = useState<bigint>(0n);
-  const [step, setStep] = useState<'input' | 'approving' | 'investing' | 'success' | 'error'>('input');
-  const [errorMessage, setErrorMessage] = useState('');
-
-  const amountInWei = amount ? parseUnits(amount, token.decimals) : 0n;
-  const needsApproval = allowance < amountInWei;
-  const amountNum = Number(amount) || 0;
-  const balanceNum = Number(formatUnits(balance, token.decimals));
-  const minInvestment = Number(project.minInvestment) / 1e6;
-
-  const isValidAmount =
-    amountNum >= minInvestment &&
-    amountNum <= effectiveMaxInvestment &&
-    amountNum <= balanceNum &&
-    amountNum > 0;
-
-  // Wagmi hooks for transactions
-  const {
-    writeContract: approve,
-    data: approveHash,
-    isPending: isApproving,
-    isError: isApproveError,
-    error: approveError,
-  } = useWriteContract();
-
-  const {
-    writeContract: invest,
-    data: investHash,
-    isPending: isInvesting,
-    isError: isInvestError,
-    error: investError,
-  } = useWriteContract();
-
-  const { isSuccess: approveSuccess } = useWaitForTransactionReceipt({ hash: approveHash });
-  const { isSuccess: investSuccess } = useWaitForTransactionReceipt({ hash: investHash });
-
-  // Debug logging
-  useEffect(() => {
-    console.log('=== INVEST MODAL DEBUG ===');
-    console.log('Allowance:', allowance.toString());
-    console.log('AmountInWei:', amountInWei.toString());
-    console.log('Needs approval:', needsApproval);
-    console.log('Step:', step);
-    console.log('Escrow vault:', project.escrowVault);
-    console.log('========================');
-  }, [allowance, amountInWei, needsApproval, step, project.escrowVault]);
-
-  // Load balances with fresh client - depends on project.escrowVault
-  useEffect(() => {
-    const loadBalances = async () => {
-      if (!address) return;
-
-      try {
-        // Create fresh client to bypass any caching
-        const freshClient = createPublicClient({
-          chain: polygonAmoy,
-          transport: http(RPC_URL),
-        });
-
-        const [bal, allow] = await Promise.all([
-          freshClient.readContract({
-            address: token.address as Address,
-            abi: ERC20ABI,
-            functionName: 'balanceOf',
-            args: [address],
-          }),
-          freshClient.readContract({
-            address: token.address as Address,
-            abi: ERC20ABI,
-            functionName: 'allowance',
-            args: [address, project.escrowVault as Address],
-          }),
-        ]);
-
-        console.log('Fresh Balance:', bal?.toString());
-        console.log('Fresh Allowance:', allow?.toString());
-
-        setBalance((bal as bigint) || 0n);
-        setAllowance((allow as bigint) || 0n);
-      } catch (error) {
-        console.error('Failed to load balances:', error);
-      }
-    };
-
-    loadBalances();
-  }, [address, token, project.escrowVault]);
-
-  // Refresh allowance after approval success
-  useEffect(() => {
-    const refreshAfterApproval = async () => {
-      if (approveSuccess && address) {
-        try {
-          const freshClient = createPublicClient({
-            chain: polygonAmoy,
-            transport: http(RPC_URL),
-          });
-
-          const newAllowance = await freshClient.readContract({
-            address: token.address as Address,
-            abi: ERC20ABI,
-            functionName: 'allowance',
-            args: [address, project.escrowVault as Address],
-          });
-
-          console.log('Allowance after approval:', newAllowance?.toString());
-          setAllowance((newAllowance as bigint) || 0n);
-          setStep('input'); // Go back to input so user can click Invest
-        } catch (error) {
-          console.error('Failed to refresh allowance:', error);
-          setAllowance(amountInWei);
-          setStep('input');
-        }
-      }
-    };
-
-    refreshAfterApproval();
-  }, [approveSuccess, address, token.address, project.escrowVault, amountInWei]);
-
-  // Handle invest success
-  useEffect(() => {
-    if (investSuccess) {
-      setStep('success');
-      onSuccess(amountNum);
-    }
-  }, [investSuccess, amountNum, onSuccess]);
-
-  // Handle errors
-  useEffect(() => {
-    if (isApproveError) {
-      setStep('error');
-      setErrorMessage(approveError?.message || 'Approval failed');
-    }
-    if (isInvestError) {
-      setStep('error');
-      setErrorMessage(investError?.message || 'Investment failed');
-    }
-  }, [isApproveError, isInvestError, approveError, investError]);
-
-  const handleApprove = () => {
-    setStep('approving');
-    approve({
-      address: token.address as Address,
-      abi: ERC20ABI,
-      functionName: 'approve',
-      args: [project.escrowVault as Address, amountInWei],
-    });
-  };
-
-  const handleInvest = () => {
-    console.log('=== INVEST CALL ===');
-    console.log('Project escrowVault:', project.escrowVault);
-    console.log('Token address:', token.address);
-    console.log('Amount in Wei:', amountInWei.toString());
-    console.log('Project ID:', project.id.toString());
-
-    setStep('investing');
-    invest({
-      address: project.escrowVault as Address,
-      abi: EscrowVaultABI,
-      functionName: 'investWithToken',
-      args: [project.id, token.address as Address, amountInWei],
-    });
-  };
-
-  const handleSetMax = () => {
-    const maxAmount = Math.min(effectiveMaxInvestment, balanceNum);
-    setAmount(maxAmount.toString());
-  };
-
-  const handleSetMin = () => {
-    setAmount(minInvestment.toString());
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-xl max-w-md w-full p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-white">Invest in {projectName}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
-            ×
-          </button>
-        </div>
-
-        {step === 'success' ? (
-          <div className="text-center py-8">
-            <div className="text-green-500 text-5xl mb-4">✓</div>
-            <h3 className="text-xl font-bold text-white mb-2">Investment Successful!</h3>
-            <p className="text-gray-400 mb-6">
-              You invested {formatCurrency(amountNum)} in {projectName}
-            </p>
-            <button
-              onClick={onClose}
-              className="w-full py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600"
-            >
-              Close
-            </button>
-          </div>
-        ) : step === 'error' ? (
-          <div className="text-center py-8">
-            <div className="text-red-500 text-5xl mb-4">✗</div>
-            <h3 className="text-xl font-bold text-white mb-2">Transaction Failed</h3>
-            <p className="text-gray-400 mb-6 text-sm break-all">{errorMessage}</p>
-            <button
-              onClick={() => {
-                setStep('input');
-                setErrorMessage('');
-              }}
-              className="w-full py-3 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-500"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Debug Info Box */}
-            <div className="bg-gray-900 p-3 rounded-lg mb-4 text-xs font-mono text-gray-400">
-              <div>Allowance: {allowance.toString()}</div>
-              <div>Amount: {amountInWei.toString()}</div>
-              <div>Needs approval: {needsApproval ? 'Yes' : 'No'}</div>
-              <div>Step: {step}</div>
-            </div>
-
-            {/* Token Selection */}
-            <div className="mb-4">
-              <label className="block text-sm text-gray-400 mb-2">Payment Token</label>
-              <div className="flex gap-2">
-                {Object.values(TOKENS).map((t) => (
-                  <button
-                    key={t.symbol}
-                    onClick={() => setToken(t)}
-                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
-                      token.symbol === t.symbol
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {t.symbol}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Amount Input */}
-            <div className="mb-4">
-              <label className="block text-sm text-gray-400 mb-2">Amount (USD)</label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 pr-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                  <button
-                    onClick={handleSetMin}
-                    className="px-2 py-1 text-xs bg-gray-600 text-gray-300 rounded hover:bg-gray-500"
-                  >
-                    Min
-                  </button>
-                  <button
-                    onClick={handleSetMax}
-                    className="px-2 py-1 text-xs bg-gray-600 text-gray-300 rounded hover:bg-gray-500"
-                  >
-                    Max
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>Min: {formatCurrency(minInvestment)}</span>
-                <span>Max: {formatCurrency(effectiveMaxInvestment)}</span>
-              </div>
-            </div>
-
-            {/* Balance Display */}
-            <div className="bg-gray-700/50 rounded-lg p-3 mb-6">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Your {token.symbol} Balance:</span>
-                <span className="text-white font-medium">{formatCurrency(balanceNum)}</span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            {needsApproval ? (
-              <button
-                onClick={handleApprove}
-                disabled={!isValidAmount || isApproving}
-                className={`w-full py-3 rounded-lg font-medium transition-colors ${
-                  isValidAmount && !isApproving
-                    ? 'bg-yellow-500 text-black hover:bg-yellow-400'
-                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                {isApproving ? 'Approving...' : `Approve ${token.symbol}`}
-              </button>
-            ) : (
-              <button
-                onClick={handleInvest}
-                disabled={!isValidAmount || isInvesting}
-                className={`w-full py-3 rounded-lg font-medium transition-colors ${
-                  isValidAmount && !isInvesting
-                    ? 'bg-blue-500 text-white hover:bg-blue-400'
-                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                {isInvesting ? 'Processing...' : `Invest ${formatCurrency(amountNum)}`}
-              </button>
-            )}
-
-            {/* Validation Messages */}
-            {amount && !isValidAmount && (
-              <p className="text-red-400 text-sm mt-2 text-center">
-                {amountNum < minInvestment && `Minimum investment is ${formatCurrency(minInvestment)}`}
-                {amountNum > effectiveMaxInvestment && `Maximum investment is ${formatCurrency(effectiveMaxInvestment)}`}
-                {amountNum > balanceNum && `Insufficient ${token.symbol} balance`}
-              </p>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
+  }).format(num);
 }
 
-// KYC Warning Component
+function formatUSDC(amount: bigint): string {
+  const num = Number(amount) / 1e6;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
+function convertIPFSUrl(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('ipfs://')) {
+    const hash = url.replace('ipfs://', '');
+    if (hash.length >= 46) {
+      return `https://gateway.pinata.cloud/ipfs/${hash}`;
+    }
+    return '';
+  }
+  return url;
+}
+
+function isValidIPFSHash(uri: string): boolean {
+  if (!uri) return false;
+  if (uri.startsWith('ipfs://')) {
+    const hash = uri.replace('ipfs://', '');
+    return hash.length >= 46;
+  }
+  return uri.startsWith('http');
+}
+
+// ============================================================================
+// KYC WARNING COMPONENT (ADDED)
+// ============================================================================
+
 function KYCWarning() {
   return (
-    <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-lg p-6 mb-6">
+    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 mb-6">
       <div className="flex items-start gap-4">
-        <div className="text-yellow-500 text-2xl">⚠️</div>
+        <span className="text-2xl">⚠️</span>
         <div>
           <h3 className="text-yellow-400 font-semibold text-lg mb-2">KYC Verification Required</h3>
-          <p className="text-gray-300 mb-4">
+          <p className="text-slate-300 mb-4">
             You need to complete KYC verification before investing in this project. This is required for regulatory compliance.
           </p>
           <Link
             href="/identity"
-            className="inline-block px-6 py-2 bg-yellow-500 text-black font-medium rounded-lg hover:bg-yellow-400 transition-colors"
+            className="inline-block px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-medium rounded-lg transition"
           >
             Complete KYC Verification →
           </Link>
@@ -577,77 +347,501 @@ function KYCWarning() {
   );
 }
 
-// Main Page Content Component
+// ============================================================================
+// INVEST MODAL COMPONENT
+// ============================================================================
+
+interface InvestModalProps {
+  project: Project;
+  projectName: string;
+  effectiveMaxInvestment: number;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, onSuccess }: InvestModalProps) {
+  const { address } = useAccount();
+  const [selectedToken, setSelectedToken] = useState<'USDC' | 'USDT'>('USDC');
+  const [amount, setAmount] = useState('');
+  const [step, setStep] = useState<'input' | 'approve' | 'invest'>('input');
+  const [balance, setBalance] = useState<bigint>(0n);
+  const [allowance, setAllowance] = useState<bigint>(0n);
+
+  const token = TOKENS[selectedToken];
+  const amountInWei = amount ? parseUnits(amount, token.decimals) : 0n;
+  const minInvestment = Number(project.minInvestment);
+
+  const { writeContract: approve, data: approveHash } = useWriteContract();
+  const { writeContract: invest, data: investHash } = useWriteContract();
+
+  const { isSuccess: approveSuccess } = useWaitForTransactionReceipt({ hash: approveHash });
+  const { isSuccess: investSuccess } = useWaitForTransactionReceipt({ hash: investHash });
+
+  // Load balances and allowance
+  useEffect(() => {
+    if (!address || !project.escrowVault) return;
+
+    const loadBalances = async () => {
+      try {
+        console.log('Loading balances for escrow:', project.escrowVault);
+        const [bal, allow] = await Promise.all([
+          publicClient.readContract({
+            address: token.address,
+            abi: ERC20ABI,
+            functionName: 'balanceOf',
+            args: [address],
+          }),
+          publicClient.readContract({
+            address: token.address,
+            abi: ERC20ABI,
+            functionName: 'allowance',
+            args: [address, project.escrowVault as Address],
+          }),
+        ]);
+        console.log('Balance:', bal, 'Allowance:', allow);
+        setBalance(bal as bigint);
+        setAllowance(allow as bigint);
+      } catch (err) {
+        console.error('Failed to load balances:', err);
+      }
+    };
+
+    loadBalances();
+  }, [address, selectedToken, token.address, project.escrowVault]);
+
+  // Re-fetch allowance after approval succeeds
+  useEffect(() => {
+    if (approveSuccess && address && project.escrowVault) {
+      const refetchAllowance = async () => {
+        try {
+          console.log('Refetching allowance after approval...');
+          const newAllowance = await publicClient.readContract({
+            address: token.address,
+            abi: ERC20ABI,
+            functionName: 'allowance',
+            args: [address, project.escrowVault as Address],
+          });
+          console.log('New allowance after approval:', newAllowance);
+          setAllowance(newAllowance as bigint);
+          setStep('invest');
+        } catch (err) {
+          console.error('Failed to refetch allowance:', err);
+          // Fallback: assume approval worked
+          setAllowance(amountInWei);
+          setStep('invest');
+        }
+      };
+      refetchAllowance();
+    }
+  }, [approveSuccess, address, token.address, project.escrowVault, amountInWei]);
+
+  // Handle successful investment
+  useEffect(() => {
+    if (investSuccess) {
+      onSuccess();
+    }
+  }, [investSuccess, onSuccess]);
+
+  const handleApprove = () => {
+    console.log('Approving', amountInWei.toString(), 'to escrow:', project.escrowVault);
+    setStep('approve');
+    approve({
+      address: token.address,
+      abi: ERC20ABI,
+      functionName: 'approve',
+      args: [project.escrowVault as Address, amountInWei],
+    });
+  };
+
+  const handleInvest = () => {
+    console.log('Investing with params:', {
+      escrowVault: project.escrowVault,
+      projectId: project.id.toString(),
+      tokenAddress: token.address,
+      amountInWei: amountInWei.toString(),
+      amountNum: amountNum,
+    });
+    
+    invest({
+      address: project.escrowVault as Address,
+      abi: EscrowVaultABI,
+      functionName: 'investWithToken',
+      args: [project.id, token.address, amountInWei],
+    });
+  };
+
+  const needsApproval = allowance < amountInWei;
+  const amountNum = Number(amount) || 0;
+  const balanceNum = Number(formatUnits(balance, token.decimals));
+  
+  const isValidAmount =
+    amountNum >= minInvestment &&
+    amountNum <= effectiveMaxInvestment &&
+    amountInWei <= balance;
+
+  // Calculate the actual max user can invest (limited by their balance too)
+  const maxUserCanInvest = Math.min(effectiveMaxInvestment, balanceNum);
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-2xl max-w-md w-full p-6 border border-slate-700">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold text-white">Invest in {projectName}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            ✕
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm text-slate-400 mb-2">Payment Token</label>
+          <div className="flex gap-2">
+            {(['USDC', 'USDT'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setSelectedToken(t)}
+                className={`flex-1 py-2 rounded-lg border ${
+                  selectedToken === t
+                    ? 'bg-blue-600 border-blue-500 text-white'
+                    : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm text-slate-400 mb-2">Investment Amount</label>
+          <div className="relative">
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 pr-20 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+              {selectedToken}
+            </span>
+          </div>
+          
+          {/* Clickable Min/Max buttons */}
+          <div className="flex justify-between items-center text-xs mt-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAmount(minInvestment.toString())}
+                className="px-2 py-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-blue-500 rounded text-slate-300 hover:text-white transition"
+              >
+                Min: ${minInvestment.toLocaleString()}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAmount(effectiveMaxInvestment.toString())}
+                className="px-2 py-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-blue-500 rounded text-slate-300 hover:text-white transition"
+              >
+                Max: ${effectiveMaxInvestment.toLocaleString()}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAmount(maxUserCanInvest.toString())}
+              className="px-2 py-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-green-500 rounded text-slate-300 hover:text-green-400 transition"
+              title="Use maximum amount based on your balance"
+            >
+              Balance: {balanceNum.toLocaleString()}
+            </button>
+          </div>
+        </div>
+
+        {/* Show remaining capacity info */}
+        {effectiveMaxInvestment < Number(project.maxInvestment) && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <p className="text-blue-400 text-sm">
+              💡 Only ${effectiveMaxInvestment.toLocaleString()} remaining to reach the funding goal.
+            </p>
+          </div>
+        )}
+
+        {/* Debug info - remove in production */}
+        <div className="mb-4 p-2 bg-slate-900 rounded text-xs text-slate-500">
+          <p>Allowance: {allowance.toString()} | Amount: {amountInWei.toString()}</p>
+          <p>Needs approval: {needsApproval ? 'Yes' : 'No'} | Step: {step}</p>
+        </div>
+
+        <div className="space-y-3">
+          {step === 'input' && (
+            <>
+              {needsApproval ? (
+                <button
+                  onClick={handleApprove}
+                  disabled={!isValidAmount}
+                  className="w-full py-3 rounded-lg bg-yellow-600 hover:bg-yellow-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold transition"
+                >
+                  Approve {selectedToken}
+                </button>
+              ) : (
+                <button
+                  onClick={handleInvest}
+                  disabled={!isValidAmount}
+                  className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold transition"
+                >
+                  Invest {amount} {selectedToken}
+                </button>
+              )}
+            </>
+          )}
+
+          {step === 'approve' && (
+            <div className="text-center py-4">
+              <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2" />
+              <p className="text-slate-300">Approving {selectedToken}...</p>
+            </div>
+          )}
+
+          {step === 'invest' && (
+            <button
+              onClick={handleInvest}
+              className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition"
+            >
+              Confirm Investment
+            </button>
+          )}
+        </div>
+
+        {!isValidAmount && amount && (
+          <p className="text-red-400 text-sm mt-2 text-center">
+            {amountNum < minInvestment
+              ? `Minimum investment is $${minInvestment.toLocaleString()}`
+              : amountNum > effectiveMaxInvestment
+                ? `Maximum investment is $${effectiveMaxInvestment.toLocaleString()}`
+                : 'Insufficient balance'}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// REFUND SECTION COMPONENT
+// ============================================================================
+
+interface RefundSectionProps {
+  project: Project;
+  investorDetails: InvestorDetails;
+  onRefundSuccess: () => void;
+}
+
+function RefundSection({ project, investorDetails, onRefundSuccess }: RefundSectionProps) {
+  const { writeContract: claimRefund, data: refundHash } = useWriteContract();
+  const { isSuccess: refundSuccess, isLoading: refundPending } = useWaitForTransactionReceipt({
+    hash: refundHash,
+  });
+
+  useEffect(() => {
+    if (refundSuccess) {
+      onRefundSuccess();
+    }
+  }, [refundSuccess, onRefundSuccess]);
+
+  const handleRefund = () => {
+    claimRefund({
+      address: project.escrowVault as Address,
+      abi: EscrowVaultABI,
+      functionName: 'claimRefund',
+      args: [project.id],
+    });
+  };
+
+  if (!investorDetails.refundsEnabled || investorDetails.deposit === 0n) {
+    return null;
+  }
+
+  return (
+    <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
+      <h3 className="text-lg font-semibold text-red-400 mb-2">Refund Available</h3>
+      <p className="text-slate-300 mb-4">
+        This project has been cancelled. You can claim a refund of your investment.
+      </p>
+      <div className="flex items-center justify-between">
+        <span className="text-white font-semibold">
+          Your Deposit: {formatUSDC(investorDetails.deposit)}
+        </span>
+        <button
+          onClick={handleRefund}
+          disabled={refundPending}
+          className="px-6 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 rounded-lg text-white font-semibold transition"
+        >
+          {refundPending ? 'Processing...' : 'Claim Refund'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// PROJECT PAGE CONTENT (with searchParams)
+// ============================================================================
+
 function ProjectPageContent() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const projectId = params?.id as string;
+
   const { address, isConnected } = useAccount();
 
-  const [project, setProject] = useState<ProjectData | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
+  const [tokenInfo, setTokenInfo] = useState<{ name: string; symbol: string } | null>(null);
+  const [investorDetails, setInvestorDetails] = useState<InvestorDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInvestModal, setShowInvestModal] = useState(false);
-  const [pendingInvestment, setPendingInvestment] = useState(0);
-  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'card' | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [pendingInvestment, setPendingInvestment] = useState<number>(0);
 
-  // KYC State
+  // === ADDED: KYC State ===
   const [isKYCVerified, setIsKYCVerified] = useState(false);
   const [kycLoading, setKycLoading] = useState(true);
 
-  const projectId = params.id as string;
-
-  // Check for payment success from URL
+  // Handle payment redirect
   useEffect(() => {
-    if (searchParams.get('payment') === 'success') {
-      setShowPaymentSuccess(true);
-      const timer = setTimeout(() => setShowPaymentSuccess(false), 10000);
-      return () => clearTimeout(timer);
+    const payment = searchParams.get('payment');
+    if (payment === 'success') {
+      setPaymentSuccess(true);
+      window.history.replaceState({}, '', `/projects/${projectId}`);
+      setTimeout(() => setPaymentSuccess(false), 10000);
     }
-  }, [searchParams]);
+  }, [searchParams, projectId]);
 
-  // Load project data
-  const loadData = useCallback(async () => {
+  const loadData = async () => {
     if (!projectId) return;
 
     try {
       setLoading(true);
-      const projectData = await publicClient.readContract({
+      setError(null);
+
+      const projectData = (await publicClient.readContract({
         address: CONTRACTS.RWAProjectNFT as Address,
         abi: RWAProjectNFTABI,
         functionName: 'getProject',
         args: [BigInt(projectId)],
-      });
+      })) as Project;
 
-      setProject(projectData as ProjectData);
+      setProject(projectData);
+      // Clear pending investment once we have fresh blockchain data
+      setPendingInvestment(0);
 
-      // Load metadata
-      if ((projectData as ProjectData).metadataURI) {
+      const isCancelledOrFailed = projectData.status === 6 || projectData.status === 7;
+
+      if (!isCancelledOrFailed && projectData.metadataURI && isValidIPFSHash(projectData.metadataURI)) {
         try {
-          const metadataResponse = await fetch((projectData as ProjectData).metadataURI, {
-            signal: AbortSignal.timeout(10000),
-          });
-          if (metadataResponse.ok) {
-            const metadataJson = await metadataResponse.json();
-            setMetadata(metadataJson);
+          const metadataUrl = convertIPFSUrl(projectData.metadataURI);
+          if (metadataUrl) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            const response = await fetch(metadataUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+              const data = await response.json();
+              setMetadata(data);
+            }
           }
-        } catch (metaError) {
-          console.error('Failed to load metadata:', metaError);
+        } catch (e) {
+          // Silent fail
+        }
+      }
+
+      if (
+        !isCancelledOrFailed &&
+        projectData.securityToken &&
+        projectData.securityToken !== ZERO_ADDRESS
+      ) {
+        try {
+          const [name, symbol] = await Promise.all([
+            publicClient.readContract({
+              address: projectData.securityToken as Address,
+              abi: RWASecurityTokenABI,
+              functionName: 'name',
+            }),
+            publicClient.readContract({
+              address: projectData.securityToken as Address,
+              abi: RWASecurityTokenABI,
+              functionName: 'symbol',
+            }),
+          ]);
+          setTokenInfo({ name: name as string, symbol: symbol as string });
+        } catch (e) {
+          // Silent fail
+        }
+      }
+
+      if (projectData.escrowVault && projectData.escrowVault !== ZERO_ADDRESS && address) {
+        try {
+          const [fundingData, deposit] = await Promise.all([
+            publicClient.readContract({
+              address: projectData.escrowVault as Address,
+              abi: EscrowVaultABI,
+              functionName: 'getProjectFunding',
+              args: [BigInt(projectId)],
+            }),
+            publicClient.readContract({
+              address: projectData.escrowVault as Address,
+              abi: EscrowVaultABI,
+              functionName: 'getInvestorDeposit',
+              args: [BigInt(projectId), address],
+            }),
+          ]);
+
+          const [, , , refundsEnabled] = fundingData as [bigint, bigint, boolean, boolean];
+
+          let tokenBalance = 0n;
+          if (projectData.securityToken && projectData.securityToken !== ZERO_ADDRESS) {
+            try {
+              tokenBalance = (await publicClient.readContract({
+                address: projectData.securityToken as Address,
+                abi: RWASecurityTokenABI,
+                functionName: 'balanceOf',
+                args: [address],
+              })) as bigint;
+            } catch (e) {
+              // Silent fail
+            }
+          }
+
+          setInvestorDetails({
+            deposit: deposit as bigint,
+            refundsEnabled,
+            tokenBalance,
+          });
+        } catch (e) {
+          // Silent fail
         }
       }
     } catch (err) {
       console.error('Failed to load project:', err);
-      setError('Failed to load project data');
+      setError('Failed to load project details');
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  };
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [projectId, address]);
 
-  // KYC Check - gets IdentityRegistry from project's security token
+  useEffect(() => {
+    if (paymentSuccess) {
+      loadData();
+    }
+  }, [paymentSuccess]);
+
+  // === ADDED: KYC Check Effect ===
   useEffect(() => {
     const checkKYC = async () => {
       if (!address || !project?.securityToken || project.securityToken === ZERO_ADDRESS) {
@@ -657,10 +851,10 @@ function ProjectPageContent() {
       }
 
       try {
-        // Get the IdentityRegistry address from the project's security token
+        // Get IdentityRegistry address from the project's security token
         const identityRegistryAddress = await publicClient.readContract({
           address: project.securityToken as Address,
-          abi: SecurityTokenABI,
+          abi: RWASecurityTokenABI,
           functionName: 'identityRegistry',
         });
 
@@ -695,73 +889,56 @@ function ProjectPageContent() {
     checkKYC();
   }, [address, project?.securityToken]);
 
-  // Handle investment success with optimistic UI and polling
-  const handleInvestmentSuccess = useCallback(
-    (amountInvested: number) => {
-      setShowInvestModal(false);
-      setPendingInvestment((prev) => prev + amountInvested);
+  const projectName = metadata?.name || tokenInfo?.name || `Project #${projectId}`;
+  const description = metadata?.description || 'No description available.';
+  const imageUrl = metadata?.image ? convertIPFSUrl(metadata.image) : null;
 
-      // Start background polling to sync with blockchain
-      const expectedTotal = (Number(project?.totalRaised || 0n) / 1e6) + pendingInvestment + amountInvested;
+  const fundingGoalUSD = project ? Number(project.fundingGoal) : 0;
+  // Include pending investment for optimistic UI
+  const onChainRaisedUSD = project ? Number(project.totalRaised) / 1e6 : 0;
+  const totalRaisedUSD = onChainRaisedUSD + pendingInvestment;
+  const remainingCapacity = Math.max(0, fundingGoalUSD - totalRaisedUSD);
+  const effectiveMaxInvestment = project 
+    ? Math.min(Number(project.maxInvestment), remainingCapacity) 
+    : 0;
+  const progress = fundingGoalUSD > 0 ? Math.min((totalRaisedUSD / fundingGoalUSD) * 100, 100) : 0;
 
-      let attempts = 0;
-      const maxAttempts = 30;
+  const deadlineDate = project ? new Date(Number(project.deadline) * 1000) : null;
+  const isExpired = deadlineDate ? deadlineDate < new Date() : false;
+  const daysLeft = deadlineDate
+    ? Math.max(0, Math.ceil((deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
-      const pollBlockchain = async () => {
-        attempts++;
-        try {
-          const freshProject = await publicClient.readContract({
-            address: CONTRACTS.RWAProjectNFT as Address,
-            abi: RWAProjectNFTABI,
-            functionName: 'getProject',
-            args: [BigInt(projectId)],
-          });
+  const isCancelled = project?.status === 6;
+  const isFailed = project?.status === 7;
+  
+  // === MODIFIED: canInvest now includes KYC check ===
+  const canInvest = project?.status === 2 && !isExpired && remainingCapacity > 0 && isKYCVerified;
+  
+  // === ADDED: Show KYC warning when not verified but otherwise can invest ===
+  const showKYCWarning = !kycLoading && !isKYCVerified && isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0;
 
-          const onChainTotal = Number((freshProject as ProjectData).totalRaised) / 1e6;
+  const tokenPrice = 100; // cents
 
-          if (onChainTotal >= expectedTotal || attempts >= maxAttempts) {
-            setPendingInvestment(0);
-            loadData();
-            return;
-          }
-
-          setTimeout(pollBlockchain, 1000);
-        } catch (err) {
-          console.error('Polling error:', err);
-          if (attempts >= maxAttempts) {
-            setPendingInvestment(0);
-            loadData();
-          } else {
-            setTimeout(pollBlockchain, 1000);
-          }
-        }
-      };
-
-      // Start polling after 2 second delay
-      setTimeout(pollBlockchain, 2000);
-    },
-    [project?.totalRaised, pendingInvestment, projectId, loadData]
-  );
-
-  // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading project...</p>
+      <div className="min-h-screen bg-slate-900">
+        <Header />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full" />
         </div>
       </div>
     );
   }
 
-  // Error state
   if (error || !project) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-500 mb-4">{error || 'Project not found'}</p>
-          <Link href="/projects" className="text-blue-500 hover:underline">
+      <div className="min-h-screen bg-slate-900">
+        <Header />
+        <div className="max-w-4xl mx-auto px-4 py-20 text-center">
+          <h1 className="text-2xl font-bold text-white mb-4">Project Not Found</h1>
+          <p className="text-slate-400 mb-6">{error || 'This project does not exist.'}</p>
+          <Link href="/projects" className="text-blue-400 hover:text-blue-300 transition">
             ← Back to Projects
           </Link>
         </div>
@@ -769,142 +946,199 @@ function ProjectPageContent() {
     );
   }
 
-  // Calculate values
-  const fundingGoalUSD = Number(project.fundingGoal) / 1e6;
-  const onChainRaisedUSD = Number(project.totalRaised) / 1e6;
-  const totalRaisedUSD = onChainRaisedUSD + pendingInvestment;
-  const remainingCapacity = Math.max(0, fundingGoalUSD - totalRaisedUSD);
-  const progressPercent = Math.min(100, (totalRaisedUSD / fundingGoalUSD) * 100);
-  const isExpired = Number(project.deadline) * 1000 < Date.now();
-  const effectiveMaxInvestment = Math.min(Number(project.maxInvestment) / 1e6, remainingCapacity);
-
-  // Can invest check includes KYC verification
-  const canInvest = project.status === 2 && !isExpired && remainingCapacity > 0 && isKYCVerified;
-  const showKYCWarning = !kycLoading && !isKYCVerified && isConnected && project.status === 2 && !isExpired && remainingCapacity > 0;
-
   return (
-    <div className="min-h-screen bg-gray-900 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        {/* Payment Success Banner */}
-        {showPaymentSuccess && (
-          <div className="bg-green-900/50 border border-green-500 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <span className="text-green-500 text-xl">✓</span>
-              <div>
-                <p className="text-green-400 font-medium">Payment Successful!</p>
-                <p className="text-gray-400 text-sm">Your investment is being processed and will appear shortly.</p>
-              </div>
+    <div className="min-h-screen bg-slate-900">
+      <Header />
+
+      {/* Payment Success Banner */}
+      {paymentSuccess && (
+        <div className="bg-green-500/20 border-b border-green-500/30">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div className="flex-1">
+              <p className="text-green-400 font-semibold">Payment Successful!</p>
+              <p className="text-green-300 text-sm">
+                Your investment is being processed. Tokens will be minted once the payment is confirmed.
+              </p>
             </div>
+            <button
+              onClick={() => setPaymentSuccess(false)}
+              className="text-green-400 hover:text-green-300"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hero Section */}
+      <div className="relative">
+        {imageUrl ? (
+          <div
+            className="h-64 md:h-80 bg-cover bg-center"
+            style={{ backgroundImage: `url(${imageUrl})` }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent" />
+          </div>
+        ) : (
+          <div className="h-64 md:h-80 bg-gradient-to-r from-blue-600 to-purple-600">
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent" />
           </div>
         )}
 
-        {/* Back Link */}
-        <Link href="/projects" className="text-blue-500 hover:underline mb-6 inline-block">
-          ← Back to Projects
-        </Link>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-2">
-            {/* Project Image */}
-            {metadata?.image && (
-              <div className="rounded-xl overflow-hidden mb-6">
-                <img
-                  src={metadata.image}
-                  alt={metadata?.name || 'Project'}
-                  className="w-full h-64 object-cover"
-                />
-              </div>
-            )}
-
-            {/* Project Title & Status */}
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h1 className="text-3xl font-bold text-white mb-2">
-                  {metadata?.name || `Project #${project.id.toString()}`}
-                </h1>
-                {metadata?.category && (
-                  <span className="text-sm text-gray-400 bg-gray-800 px-3 py-1 rounded-full">
-                    {metadata.category}
-                  </span>
-                )}
-              </div>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium text-white ${getStatusColor(project.status)}`}>
-                {getStatusText(project.status)}
+        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <span
+                className={`px-4 py-2 rounded-full text-sm font-medium border ${
+                  STATUS_COLORS[project.status] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                }`}
+              >
+                {STATUS_LABELS[project.status] || 'Unknown'}
               </span>
+              {tokenInfo && (
+                <span className="px-3 py-1 bg-slate-700/80 rounded-full text-sm text-slate-300">
+                  ${tokenInfo.symbol}
+                </span>
+              )}
+              {metadata?.properties?.category && (
+                <span className="px-3 py-1 bg-slate-700/80 rounded-full text-sm text-slate-300">
+                  {metadata.properties.category}
+                </span>
+              )}
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">{projectName}</h1>
+          </div>
+        </div>
+      </div>
+
+      {/* Cancelled/Failed Banner */}
+      {(isCancelled || isFailed) && (
+        <div
+          className={`${isCancelled ? 'bg-red-500/20 border-red-500/30' : 'bg-orange-500/20 border-orange-500/30'} border-y`}
+        >
+          <div className="max-w-6xl mx-auto px-6 py-4">
+            <p className={`${isCancelled ? 'text-red-400' : 'text-orange-400'} font-semibold`}>
+              {isCancelled
+                ? 'This project has been cancelled. Investors can claim refunds below.'
+                : 'This project has failed to reach its funding goal.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Left Column - Details */}
+          <div className="lg:col-span-2 space-y-8">
+            <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+              <h2 className="text-xl font-semibold text-white mb-4">About</h2>
+              <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">{description}</p>
             </div>
 
-            {/* Description */}
-            {metadata?.description && (
-              <div className="bg-gray-800 rounded-xl p-6 mb-6">
-                <h2 className="text-xl font-semibold text-white mb-3">About</h2>
-                <p className="text-gray-300 whitespace-pre-wrap">{metadata.description}</p>
+            <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+              <h2 className="text-xl font-semibold text-white mb-4">Investment Details</h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-slate-700/50 rounded-lg p-4">
+                  <p className="text-slate-400 text-sm">Minimum Investment</p>
+                  <p className="text-white text-lg font-semibold">{formatUSD(project.minInvestment)}</p>
+                </div>
+                <div className="bg-slate-700/50 rounded-lg p-4">
+                  <p className="text-slate-400 text-sm">Maximum Investment</p>
+                  <p className="text-white text-lg font-semibold">{formatUSD(project.maxInvestment)}</p>
+                </div>
+                {metadata?.properties?.projectedROI && (
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <p className="text-slate-400 text-sm">Projected ROI</p>
+                    <p className="text-green-400 text-lg font-semibold">
+                      {metadata.properties.projectedROI}%
+                    </p>
+                  </div>
+                )}
+                {metadata?.properties?.roiTimelineMonths && (
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <p className="text-slate-400 text-sm">ROI Timeline</p>
+                    <p className="text-white text-lg font-semibold">
+                      {metadata.properties.roiTimelineMonths} months
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {metadata?.documents && (
+              <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                <h2 className="text-xl font-semibold text-white mb-4">Documents</h2>
+                <div className="space-y-3">
+                  {metadata.documents.pitchDeck && (
+                    <a
+                      href={convertIPFSUrl(metadata.documents.pitchDeck)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition"
+                    >
+                      <span className="text-2xl">📄</span>
+                      <div>
+                        <p className="text-white font-medium">Pitch Deck</p>
+                        <p className="text-slate-400 text-sm">View presentation</p>
+                      </div>
+                    </a>
+                  )}
+                  {metadata.documents.legalDocs?.map((doc, i) => (
+                    <a
+                      key={i}
+                      href={convertIPFSUrl(doc)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition"
+                    >
+                      <span className="text-2xl">📑</span>
+                      <div>
+                        <p className="text-white font-medium">Legal Document {i + 1}</p>
+                        <p className="text-slate-400 text-sm">View document</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Project Details */}
-            <div className="bg-gray-800 rounded-xl p-6 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Project Details</h2>
-              <div className="grid grid-cols-2 gap-4">
-                {metadata?.location && (
-                  <div>
-                    <p className="text-gray-400 text-sm">Location</p>
-                    <p className="text-white">{metadata.location}</p>
-                  </div>
-                )}
-                {metadata?.expectedReturns && (
-                  <div>
-                    <p className="text-gray-400 text-sm">Expected Returns</p>
-                    <p className="text-white">{metadata.expectedReturns}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-gray-400 text-sm">Deadline</p>
-                  <p className="text-white">{formatDate(project.deadline)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Min Investment</p>
-                  <p className="text-white">{formatCurrency(Number(project.minInvestment) / 1e6)}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Contract Links */}
-            <div className="bg-gray-800 rounded-xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Contracts</h2>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Project NFT</span>
+            <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+              <h2 className="text-xl font-semibold text-white mb-4">Smart Contracts</h2>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                  <span className="text-slate-400">Project NFT</span>
                   <a
                     href={`${EXPLORER_URL}/address/${CONTRACTS.RWAProjectNFT}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline font-mono"
+                    className="text-blue-400 hover:text-blue-300 text-sm font-mono"
                   >
                     {CONTRACTS.RWAProjectNFT.slice(0, 8)}...{CONTRACTS.RWAProjectNFT.slice(-6)}
                   </a>
                 </div>
-                {project.securityToken !== ZERO_ADDRESS && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Security Token</span>
+                {project.securityToken && project.securityToken !== ZERO_ADDRESS && (
+                  <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                    <span className="text-slate-400">Security Token</span>
                     <a
                       href={`${EXPLORER_URL}/address/${project.securityToken}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline font-mono"
+                      className="text-blue-400 hover:text-blue-300 text-sm font-mono"
                     >
                       {project.securityToken.slice(0, 8)}...{project.securityToken.slice(-6)}
                     </a>
                   </div>
                 )}
-                {project.escrowVault !== ZERO_ADDRESS && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Escrow Vault</span>
+                {project.escrowVault && project.escrowVault !== ZERO_ADDRESS && (
+                  <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                    <span className="text-slate-400">Escrow Vault</span>
                     <a
                       href={`${EXPLORER_URL}/address/${project.escrowVault}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline font-mono"
+                      className="text-blue-400 hover:text-blue-300 text-sm font-mono"
                     >
                       {project.escrowVault.slice(0, 8)}...{project.escrowVault.slice(-6)}
                     </a>
@@ -912,113 +1146,277 @@ function ProjectPageContent() {
                 )}
               </div>
             </div>
+
+            {investorDetails && (
+              <RefundSection
+                project={project}
+                investorDetails={investorDetails}
+                onRefundSuccess={loadData}
+              />
+            )}
           </div>
 
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
-            {/* Funding Progress */}
-            <div className="bg-gray-800 rounded-xl p-6 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Funding Progress</h2>
-
-              {/* Progress Bar */}
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-400">Raised</span>
-                  <span className="text-white font-medium">{progressPercent.toFixed(1)}%</span>
+          {/* Right Column - Investment Card */}
+          <div className="space-y-6">
+            <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 sticky top-6">
+              <div className="mb-6">
+                <div className="flex justify-between items-end mb-2">
+                  <div>
+                    <p className="text-slate-400 text-sm">Raised</p>
+                    <p className="text-2xl font-bold text-white">
+                      ${totalRaisedUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      {pendingInvestment > 0 && (
+                        <span className="text-sm text-green-400 ml-2">(updating...)</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-400 text-sm">Goal</p>
+                    <p className="text-lg font-semibold text-slate-300">{formatUSD(project.fundingGoal)}</p>
+                  </div>
                 </div>
-                <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-                    style={{ width: `${progressPercent}%` }}
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+                    style={{ width: `${progress}%` }}
                   />
                 </div>
+                <p className="text-slate-400 text-sm mt-2">{progress.toFixed(1)}% funded</p>
               </div>
 
-              {/* Stats */}
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Total Raised</span>
-                  <span className="text-white font-medium">
-                    {formatCurrency(totalRaisedUSD)}
-                    {pendingInvestment > 0 && (
-                      <span className="text-yellow-500 text-xs ml-1">(+{formatCurrency(pendingInvestment)} pending)</span>
+              <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-700">
+                <div className="flex-1">
+                  <p className="text-slate-400 text-sm">Time Remaining</p>
+                  <p className="text-white font-semibold">
+                    {isExpired ? <span className="text-red-400">Ended</span> : `${daysLeft} days left`}
+                  </p>
+                </div>
+                {deadlineDate && (
+                  <div className="text-right">
+                    <p className="text-slate-400 text-sm">Deadline</p>
+                    <p className="text-white">
+                      {deadlineDate.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {investorDetails && investorDetails.deposit > 0n && (
+                <div className="mb-6 pb-6 border-b border-slate-700">
+                  <p className="text-slate-400 text-sm mb-2">Your Investment</p>
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                    <p className="text-blue-400 text-xl font-bold">
+                      {formatUSDC(investorDetails.deposit)}
+                    </p>
+                    {investorDetails.tokenBalance > 0n && (
+                      <p className="text-slate-400 text-sm mt-1">
+                        {formatUnits(investorDetails.tokenBalance, 18)} tokens
+                      </p>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* === ADDED: KYC Warning in investment card === */}
+              {showKYCWarning && <KYCWarning />}
+
+              {canInvest && isConnected && (
+                <div className="space-y-4">
+                  <p className="text-slate-400 text-sm text-center">Choose payment method</p>
+
+                  {!paymentMethod && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => setPaymentMethod('crypto')}
+                        className="flex flex-col items-center gap-2 p-4 bg-slate-700 hover:bg-slate-600 rounded-xl border border-slate-600 hover:border-blue-500 transition"
+                      >
+                        <span className="text-2xl">💎</span>
+                        <span className="text-white font-medium">Crypto</span>
+                        <span className="text-slate-400 text-xs">USDC / USDT</span>
+                      </button>
+                      <button
+                        onClick={() => setPaymentMethod('card')}
+                        className="flex flex-col items-center gap-2 p-4 bg-slate-700 hover:bg-slate-600 rounded-xl border border-slate-600 hover:border-purple-500 transition"
+                      >
+                        <span className="text-2xl">💳</span>
+                        <span className="text-white font-medium">Card</span>
+                        <span className="text-slate-400 text-xs">Visa / Mastercard</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {paymentMethod === 'crypto' && (
+                    <>
+                      <button
+                        onClick={() => setShowInvestModal(true)}
+                        className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-xl text-white font-semibold transition"
+                      >
+                        Invest with Crypto
+                      </button>
+                      <button
+                        onClick={() => setPaymentMethod(null)}
+                        className="w-full text-slate-400 hover:text-white text-sm transition"
+                      >
+                        ← Choose different method
+                      </button>
+                    </>
+                  )}
+
+                  {paymentMethod === 'card' && (
+                    <StripeInvestment
+                      projectId={Number(projectId)}
+                      projectName={projectName}
+                      minInvestment={Number(project.minInvestment)}
+                      maxInvestment={effectiveMaxInvestment}
+                      tokenPrice={tokenPrice}
+                     onSuccess={(amountInvested) => {
+                      // Add optimistic amount
+                      setPendingInvestment(prev => prev + amountInvested);
+                      setPaymentMethod(null);
+                      
+                      // Poll blockchain until it catches up (don't refresh immediately)
+                      const expectedTotal = totalRaisedUSD + amountInvested;
+                      
+                      const pollBlockchain = async () => {
+                        let attempts = 0;
+                        const maxAttempts = 30; // 30 seconds max
+                        
+                        const checkTotal = async () => {
+                          attempts++;
+                          try {
+                            const projectData = await publicClient.readContract({
+                              address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+                              abi: RWAProjectNFTABI,
+                              functionName: 'getProject',
+                              args: [BigInt(projectId)],
+                            }) as Project;
+                            
+                            const onChainTotal = Number(projectData.totalRaised) / 1e6;
+                            
+                            if (onChainTotal >= expectedTotal || attempts >= maxAttempts) {
+                              // Blockchain caught up or timeout - clear pending
+                              setPendingInvestment(0);
+                              await loadData(); // Now safe to refresh
+                            } else {
+                              // Keep polling every 1 second
+                              setTimeout(checkTotal, 1000);
+                            }
+                          } catch (error) {
+                            console.error('Polling error:', error);
+                            if (attempts >= maxAttempts) {
+                              setPendingInvestment(0);
+                              await loadData();
+                            } else {
+                              setTimeout(checkTotal, 1000);
+                            }
+                          }
+                        };
+                        
+                        // Start polling after 2 seconds (give blockchain time)
+                        setTimeout(checkTotal, 2000);
+                      };
+                      
+                      pollBlockchain();
+                    }}
+                      onCancel={() => setPaymentMethod(null)}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* === MODIFIED: Show connect wallet only if KYC verified === */}
+              {!isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0 && (
+                <div className="text-center py-4">
+                  <p className="text-slate-400 mb-4">Connect your wallet to invest</p>
+                </div>
+              )}
+
+              {!canInvest && !isCancelled && !isFailed && !showKYCWarning && (
+                <div className="text-center py-4">
+                  <p className="text-slate-400">
+                    {isExpired ? 'This funding round has ended' : 'Investment not available'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+              <h3 className="text-lg font-semibold text-white mb-4">Project Info</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Project ID</span>
+                  <span className="text-white">#{projectId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Created</span>
+                  <span className="text-white">
+                    {new Date(Number(project.createdAt) * 1000).toLocaleDateString()}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Funding Goal</span>
-                  <span className="text-white font-medium">{formatCurrency(fundingGoalUSD)}</span>
+                  <span className="text-slate-400">Owner</span>
+                  <a
+                    href={`${EXPLORER_URL}/address/${project.owner}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300"
+                  >
+                    {project.owner.slice(0, 6)}...{project.owner.slice(-4)}
+                  </a>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Remaining</span>
-                  <span className="text-white font-medium">{formatCurrency(remainingCapacity)}</span>
-                </div>
+                {metadata?.external_url && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Website</span>
+                    <a
+                      href={metadata.external_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      Visit →
+                    </a>
+                  </div>
+                )}
               </div>
-            </div>
-
-            {/* KYC Warning */}
-            {showKYCWarning && <KYCWarning />}
-
-            {/* Investment Section */}
-            {canInvest && isConnected && (
-              <div className="bg-gray-800 rounded-xl p-6 mb-6">
-                <h2 className="text-xl font-semibold text-white mb-4">Invest Now</h2>
-                <p className="text-gray-400 text-sm mb-4">
-                  Investment range: {formatCurrency(Number(project.minInvestment) / 1e6)} - {formatCurrency(effectiveMaxInvestment)}
-                </p>
-                <button
-                  onClick={() => setShowInvestModal(true)}
-                  className="w-full py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-400 transition-colors"
-                >
-                  Invest with Crypto
-                </button>
-              </div>
-            )}
-
-            {/* Connect Wallet Prompt */}
-            {!isConnected && project.status === 2 && !isExpired && remainingCapacity > 0 && (
-              <div className="bg-gray-800 rounded-xl p-6 mb-6">
-                <p className="text-gray-400 text-center">Connect your wallet to invest in this project</p>
-              </div>
-            )}
-
-            {/* Project Owner */}
-            <div className="bg-gray-800 rounded-xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-3">Project Owner</h2>
-              <a
-                href={`${EXPLORER_URL}/address/${project.owner}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:underline font-mono text-sm break-all"
-              >
-                {project.owner}
-              </a>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Invest Modal */}
       {showInvestModal && (
         <InvestModal
           project={project}
-          projectName={metadata?.name || `Project #${project.id.toString()}`}
+          projectName={projectName}
           effectiveMaxInvestment={effectiveMaxInvestment}
           onClose={() => setShowInvestModal(false)}
-          onSuccess={handleInvestmentSuccess}
+          onSuccess={() => {
+            setShowInvestModal(false);
+            setPaymentMethod(null);
+            loadData();
+          }}
         />
       )}
     </div>
   );
 }
 
-// Main Export with Suspense
-export default function ProjectPage() {
+// ============================================================================
+// MAIN PAGE COMPONENT (with Suspense for useSearchParams)
+// ============================================================================
+
+export default function ProjectDetailPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="min-h-screen bg-slate-900">
+          <Header />
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full" />
+          </div>
         </div>
       }
     >
