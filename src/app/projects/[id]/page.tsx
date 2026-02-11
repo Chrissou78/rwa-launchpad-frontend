@@ -309,11 +309,12 @@ function isValidIPFSHash(uri: string): boolean {
 interface InvestModalProps {
   project: Project;
   projectName: string;
+  effectiveMaxInvestment: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function InvestModal({ project, projectName, onClose, onSuccess }: InvestModalProps) {
+function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, onSuccess }: InvestModalProps) {
   const { address } = useAccount();
   const [selectedToken, setSelectedToken] = useState<'USDC' | 'USDT'>('USDC');
   const [amount, setAmount] = useState('');
@@ -323,8 +324,7 @@ function InvestModal({ project, projectName, onClose, onSuccess }: InvestModalPr
 
   const token = TOKENS[selectedToken];
   const amountInWei = amount ? parseUnits(amount, token.decimals) : 0n;
-  const minInvestment = project.minInvestment;
-  const maxInvestment = project.maxInvestment;
+  const minInvestment = Number(project.minInvestment);
 
   const { writeContract: approve, data: approveHash } = useWriteContract();
   const { writeContract: invest, data: investHash } = useWriteContract();
@@ -395,11 +395,9 @@ function InvestModal({ project, projectName, onClose, onSuccess }: InvestModalPr
 
   const needsApproval = allowance < amountInWei;
   const amountNum = Number(amount) || 0;
-  const remainingCapacity = Number(project.fundingGoal) - Number(project.totalRaised) / 1e6;
-  const effectiveMaxInvestment = Math.min(Number(project.maxInvestment), remainingCapacity);
-
+  
   const isValidAmount =
-    amountNum >= Number(minInvestment) &&
+    amountNum >= minInvestment &&
     amountNum <= effectiveMaxInvestment &&
     amountInWei <= balance;
 
@@ -448,11 +446,20 @@ function InvestModal({ project, projectName, onClose, onSuccess }: InvestModalPr
           </div>
           <div className="flex justify-between text-xs text-slate-400 mt-1">
             <span>
-              Min: {formatUSD(minInvestment)} / Max: {formatUSD(maxInvestment)}
+              Min: ${minInvestment.toLocaleString()} / Max: ${effectiveMaxInvestment.toLocaleString()}
             </span>
             <span>Balance: {formatUnits(balance, token.decimals)}</span>
           </div>
         </div>
+
+        {/* Show remaining capacity info */}
+        {effectiveMaxInvestment < Number(project.maxInvestment) && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <p className="text-blue-400 text-sm">
+              💡 Only ${effectiveMaxInvestment.toLocaleString()} remaining to reach the funding goal.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-3">
           {step === 'input' && (
@@ -496,10 +503,10 @@ function InvestModal({ project, projectName, onClose, onSuccess }: InvestModalPr
 
         {!isValidAmount && amount && (
           <p className="text-red-400 text-sm mt-2 text-center">
-            {amountNum < Number(minInvestment)
-              ? `Minimum investment is ${formatUSD(minInvestment)}`
-              : amountNum > Number(maxInvestment)
-                ? `Maximum investment is ${formatUSD(maxInvestment)}`
+            {amountNum < minInvestment
+              ? `Minimum investment is $${minInvestment.toLocaleString()}`
+              : amountNum > effectiveMaxInvestment
+                ? `Maximum investment is $${effectiveMaxInvestment.toLocaleString()}`
                 : 'Insufficient balance'}
           </p>
         )}
@@ -729,6 +736,10 @@ function ProjectPageContent() {
   // Include pending investment for optimistic UI
   const onChainRaisedUSD = project ? Number(project.totalRaised) / 1e6 : 0;
   const totalRaisedUSD = onChainRaisedUSD + pendingInvestment;
+  const remainingCapacity = Math.max(0, fundingGoalUSD - totalRaisedUSD);
+  const effectiveMaxInvestment = project 
+    ? Math.min(Number(project.maxInvestment), remainingCapacity) 
+    : 0;
   const progress = fundingGoalUSD > 0 ? Math.min((totalRaisedUSD / fundingGoalUSD) * 100, 100) : 0;
 
   const deadlineDate = project ? new Date(Number(project.deadline) * 1000) : null;
@@ -739,7 +750,7 @@ function ProjectPageContent() {
 
   const isCancelled = project?.status === 6;
   const isFailed = project?.status === 7;
-  const canInvest = project?.status === 2 && !isExpired;
+  const canInvest = project?.status === 2 && !isExpired && remainingCapacity > 0;
 
   const tokenPrice = 100; // cents
 
@@ -1091,7 +1102,7 @@ function ProjectPageContent() {
                       projectId={Number(projectId)}
                       projectName={projectName}
                       minInvestment={Number(project.minInvestment)}
-                      maxInvestment={Math.min(Number(project.maxInvestment), fundingGoalUSD - totalRaisedUSD)}
+                      maxInvestment={effectiveMaxInvestment}
                       tokenPrice={tokenPrice}
                      onSuccess={(amountInvested) => {
                       // Add optimistic amount
@@ -1210,6 +1221,7 @@ function ProjectPageContent() {
         <InvestModal
           project={project}
           projectName={projectName}
+          effectiveMaxInvestment={effectiveMaxInvestment}
           onClose={() => setShowInvestModal(false)}
           onSuccess={() => {
             setShowInvestModal(false);
