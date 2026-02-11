@@ -332,11 +332,13 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
   const { isSuccess: approveSuccess } = useWaitForTransactionReceipt({ hash: approveHash });
   const { isSuccess: investSuccess } = useWaitForTransactionReceipt({ hash: investHash });
 
+  // Load balances and allowance
   useEffect(() => {
-    if (!address) return;
+    if (!address || !project.escrowVault) return;
 
     const loadBalances = async () => {
       try {
+        console.log('Loading balances for escrow:', project.escrowVault);
         const [bal, allow] = await Promise.all([
           publicClient.readContract({
             address: token.address,
@@ -351,6 +353,7 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
             args: [address, project.escrowVault as Address],
           }),
         ]);
+        console.log('Balance:', bal, 'Allowance:', allow);
         setBalance(bal as bigint);
         setAllowance(allow as bigint);
       } catch (err) {
@@ -359,15 +362,35 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
     };
 
     loadBalances();
-  }, [address, selectedToken, token.address]);
+  }, [address, selectedToken, token.address, project.escrowVault]);
 
+  // Re-fetch allowance after approval succeeds
   useEffect(() => {
-    if (approveSuccess) {
-      setAllowance(amountInWei);
-      setStep('invest');
+    if (approveSuccess && address && project.escrowVault) {
+      const refetchAllowance = async () => {
+        try {
+          console.log('Refetching allowance after approval...');
+          const newAllowance = await publicClient.readContract({
+            address: token.address,
+            abi: ERC20ABI,
+            functionName: 'allowance',
+            args: [address, project.escrowVault as Address],
+          });
+          console.log('New allowance after approval:', newAllowance);
+          setAllowance(newAllowance as bigint);
+          setStep('invest');
+        } catch (err) {
+          console.error('Failed to refetch allowance:', err);
+          // Fallback: assume approval worked
+          setAllowance(amountInWei);
+          setStep('invest');
+        }
+      };
+      refetchAllowance();
     }
-  }, [approveSuccess, amountInWei]);
+  }, [approveSuccess, address, token.address, project.escrowVault, amountInWei]);
 
+  // Handle successful investment
   useEffect(() => {
     if (investSuccess) {
       onSuccess();
@@ -375,6 +398,7 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
   }, [investSuccess, onSuccess]);
 
   const handleApprove = () => {
+    console.log('Approving', amountInWei.toString(), 'to escrow:', project.escrowVault);
     setStep('approve');
     approve({
       address: token.address,
@@ -494,6 +518,12 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
             </p>
           </div>
         )}
+
+        {/* Debug info - remove in production */}
+        <div className="mb-4 p-2 bg-slate-900 rounded text-xs text-slate-500">
+          <p>Allowance: {allowance.toString()} | Amount: {amountInWei.toString()}</p>
+          <p>Needs approval: {needsApproval ? 'Yes' : 'No'} | Step: {step}</p>
+        </div>
 
         <div className="space-y-3">
           {step === 'input' && (
