@@ -10,6 +10,7 @@ import { polygonAmoy } from 'viem/chains';
 import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import Header from '@/components/Header';
 import StripeInvestment from '@/components/invest/StripeInvestment';
+import { useKYC } from '@/contexts/KYCContext';
 
 // ============================================================================
 // CONSTANTS & CONFIG
@@ -327,19 +328,19 @@ function isValidIPFSHash(uri: string): boolean {
 
 function KYCWarning() {
   return (
-    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 mb-6">
-      <div className="flex items-start gap-4">
-        <span className="text-2xl">⚠️</span>
+    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-4">
+      <div className="flex items-start gap-3">
+        <span className="text-xl">⚠️</span>
         <div>
-          <h3 className="text-yellow-400 font-semibold text-lg mb-2">KYC Verification Required</h3>
-          <p className="text-slate-300 mb-4">
-            You need to complete KYC verification before investing in this project. This is required for regulatory compliance.
+          <h3 className="text-yellow-400 font-semibold mb-1">KYC Verification Required</h3>
+          <p className="text-slate-300 text-sm mb-3">
+            Complete KYC verification to invest in this project.
           </p>
           <Link
-            href="/identity"
-            className="inline-block px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-medium rounded-lg transition"
+            href="/kyc"
+            className="inline-block px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black text-sm font-medium rounded-lg transition"
           >
-            Complete KYC Verification →
+            Complete KYC →
           </Link>
         </div>
       </div>
@@ -357,9 +358,11 @@ interface InvestModalProps {
   effectiveMaxInvestment: number;
   onClose: () => void;
   onSuccess: () => void;
+  kycRemainingLimit: number;
+  kycTier: string;
 }
 
-function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, onSuccess }: InvestModalProps) {
+function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, onSuccess, kycRemainingLimit, kycTier }: InvestModalProps) {
   const { address } = useAccount();
   const [selectedToken, setSelectedToken] = useState<'USDC' | 'USDT'>('USDC');
   const [amount, setAmount] = useState('');
@@ -706,6 +709,8 @@ function ProjectPageContent() {
   // === ADDED: KYC State ===
   const [isKYCVerified, setIsKYCVerified] = useState(false);
   const [kycLoading, setKycLoading] = useState(true);
+  const { kycData, tierInfo, canInvest: checkKYCLimit } = useKYC();
+
 
   // Handle payment redirect
   useEffect(() => {
@@ -898,8 +903,9 @@ function ProjectPageContent() {
   const onChainRaisedUSD = project ? Number(project.totalRaised) / 1e6 : 0;
   const totalRaisedUSD = onChainRaisedUSD + pendingInvestment;
   const remainingCapacity = Math.max(0, fundingGoalUSD - totalRaisedUSD);
+  const kycRemainingLimit = kycData.tier === 'Diamond' ? Infinity : kycData.remainingLimit;
   const effectiveMaxInvestment = project 
-    ? Math.min(Number(project.maxInvestment), remainingCapacity) 
+    ? Math.min(Number(project.maxInvestment), remainingCapacity, kycRemainingLimit) 
     : 0;
   const progress = fundingGoalUSD > 0 ? Math.min((totalRaisedUSD / fundingGoalUSD) * 100, 100) : 0;
 
@@ -913,7 +919,9 @@ function ProjectPageContent() {
   const isFailed = project?.status === 7;
   
   // === MODIFIED: canInvest now includes KYC check ===
-  const canInvest = project?.status === 2 && !isExpired && remainingCapacity > 0 && isKYCVerified;
+  const isKYCVerified = kycData.status === 'Approved' && kycData.tier !== 'None';
+  const canInvest = project?.status === 2 && !isExpired && remainingCapacity > 0 && isKYCVerified && kycRemainingLimit > 0;
+  const showKYCWarning = isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0 && !isKYCVerified;
   
   // === ADDED: Show KYC warning when not verified but otherwise can invest ===
   const showKYCWarning = !kycLoading && !isKYCVerified && isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0;
@@ -1221,8 +1229,26 @@ function ProjectPageContent() {
                 </div>
               )}
 
-              {/* === ADDED: KYC Warning in investment card === */}
+              {/* KYC Warning */}
               {showKYCWarning && <KYCWarning />}
+
+              {/* KYC Limit Info - show when verified */}
+              {isKYCVerified && isConnected && (
+                <div className="mb-4 p-3 bg-slate-700/50 rounded-lg">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-400 flex items-center gap-2">
+                      {tierInfo.icon} {tierInfo.label} Tier
+                    </span>
+                    <span className="text-slate-300">
+                      {kycData.tier === 'Diamond' ? (
+                        <span className="text-cyan-400">∞ Unlimited</span>
+                      ) : (
+                        `$${kycRemainingLimit.toLocaleString()} remaining`
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {canInvest && isConnected && (
                 <div className="space-y-4">
@@ -1392,6 +1418,8 @@ function ProjectPageContent() {
           project={project}
           projectName={projectName}
           effectiveMaxInvestment={effectiveMaxInvestment}
+          kycRemainingLimit={kycRemainingLimit}
+          kycTier={kycData.tier}
           onClose={() => setShowInvestModal(false)}
           onSuccess={() => {
             setShowInvestModal(false);
