@@ -13,7 +13,7 @@ export const CONTRACTS = {
   ModularCompliance: '0xEa738f23eDebB9DbEa567EA75e64cB92d91f07BA',
   ClaimTopicsRegistry: '0x3D3F72FAc44120C3991eF0bcc8Ae55a3A9f40186',
   TrustedIssuersRegistry: '0x93283fF20131213707c3eD29cB991a77aE3Ffd79',
-  EscrowVault: '0x7f65Fc9eC415C155ec1EcF83E77d6c052029A51a',
+  EscrowVault: '0x2bB93F5eC42aA40a532180F9008484E05F71c418',
   
   // Implementation contracts (for reference)
   Implementations: {
