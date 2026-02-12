@@ -5,7 +5,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { createPublicClient, http, formatUnits, parseUnits, Address } from 'viem';
+import { createPublicClient, http, formatUnits, parseUnits, formatEther, Address } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import Header from '@/components/Header';
@@ -132,7 +132,7 @@ const EscrowVaultABI = [
   {
     name: 'investWithToken',
     type: 'function',
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable', // Changed to payable for transaction fee
     inputs: [
       { name: 'projectId', type: 'uint256' },
       { name: 'token', type: 'address' },
@@ -143,11 +143,19 @@ const EscrowVaultABI = [
   {
     name: 'claimRefund',
     type: 'function',
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable', // Changed to payable for transaction fee
     inputs: [{ name: 'projectId', type: 'uint256' }],
     outputs: [],
   },
+  {
+    name: 'transactionFee',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
 ] as const;
+
 const ERC20ABI = [
   {
     name: 'balanceOf',
@@ -228,7 +236,6 @@ const RWASecurityTokenABI = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
-  // === ADDED: identityRegistry function ===
   {
     name: 'identityRegistry',
     type: 'function',
@@ -238,7 +245,6 @@ const RWASecurityTokenABI = [
   },
 ] as const;
 
-// === ADDED: IdentityRegistry ABI ===
 const IdentityRegistryABI = [
   {
     name: 'isVerified',
@@ -343,7 +349,7 @@ function isValidIPFSHash(uri: string): boolean {
 }
 
 // ============================================================================
-// KYC WARNING COMPONENT (ADDED)
+// KYC WARNING COMPONENT
 // ============================================================================
 
 function KYCWarning() {
@@ -380,9 +386,19 @@ interface InvestModalProps {
   onSuccess: () => void;
   kycRemainingLimit: number;
   kycTier: string;
+  transactionFee: bigint;
 }
 
-function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, onSuccess, kycRemainingLimit, kycTier }: InvestModalProps) {
+function InvestModal({ 
+  project, 
+  projectName, 
+  effectiveMaxInvestment, 
+  onClose, 
+  onSuccess, 
+  kycRemainingLimit, 
+  kycTier,
+  transactionFee 
+}: InvestModalProps) {
   const { address } = useAccount();
   const [selectedToken, setSelectedToken] = useState<'USDC' | 'USDT'>('USDC');
   const [amount, setAmount] = useState('');
@@ -449,7 +465,6 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
           setStep('invest');
         } catch (err) {
           console.error('Failed to refetch allowance:', err);
-          // Fallback: assume approval worked
           setAllowance(amountInWei);
           setStep('invest');
         }
@@ -482,7 +497,7 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
       projectId: project.id.toString(),
       tokenAddress: token.address,
       amountInWei: amountInWei.toString(),
-      amountNum: amountNum,
+      transactionFee: transactionFee.toString(),
     });
     
     invest({
@@ -490,6 +505,7 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
       abi: EscrowVaultABI,
       functionName: 'investWithToken',
       args: [project.id, token.address, amountInWei],
+      value: transactionFee, // Include transaction fee as msg.value
     });
   };
 
@@ -502,8 +518,8 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
     amountNum <= effectiveMaxInvestment &&
     amountInWei <= balance;
 
-  // Calculate the actual max user can invest (limited by their balance too)
   const maxUserCanInvest = Math.min(effectiveMaxInvestment, balanceNum);
+  const feeInPOL = formatEther(transactionFee);
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -549,7 +565,6 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
             </span>
           </div>
           
-          {/* Clickable Min/Max buttons */}
           <div className="flex justify-between items-center text-xs mt-2">
             <div className="flex gap-2">
               <button
@@ -578,7 +593,22 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
           </div>
         </div>
 
-        {/* Show remaining capacity info */}
+        {/* Transaction Fee Notice */}
+        {transactionFee > 0n && (
+          <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400">⛽</span>
+                <span className="text-slate-300 text-sm">Transaction Fee</span>
+              </div>
+              <span className="text-purple-400 font-medium">{feeInPOL} POL</span>
+            </div>
+            <p className="text-slate-400 text-xs mt-1">
+              This fee is required to process your investment on the blockchain.
+            </p>
+          </div>
+        )}
+
         {effectiveMaxInvestment < Number(project.maxInvestment) && (
           <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
             <p className="text-blue-400 text-sm">
@@ -586,12 +616,6 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
             </p>
           </div>
         )}
-
-        {/* Debug info - remove in production */}
-        <div className="mb-4 p-2 bg-slate-900 rounded text-xs text-slate-500">
-          <p>Allowance: {allowance.toString()} | Amount: {amountInWei.toString()}</p>
-          <p>Needs approval: {needsApproval ? 'Yes' : 'No'} | Step: {step}</p>
-        </div>
 
         <div className="space-y-3">
           {step === 'input' && (
@@ -611,6 +635,9 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
                   className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold transition"
                 >
                   Invest {amount} {selectedToken}
+                  {transactionFee > 0n && (
+                    <span className="text-blue-200 text-sm ml-1">(+ {feeInPOL} POL)</span>
+                  )}
                 </button>
               )}
             </>
@@ -629,6 +656,9 @@ function InvestModal({ project, projectName, effectiveMaxInvestment, onClose, on
               className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition"
             >
               Confirm Investment
+              {transactionFee > 0n && (
+                <span className="text-blue-200 text-sm ml-1">(+ {feeInPOL} POL)</span>
+              )}
             </button>
           )}
         </div>
@@ -655,9 +685,10 @@ interface RefundSectionProps {
   project: Project;
   investorDetails: InvestorDetails;
   onRefundSuccess: () => void;
+  transactionFee: bigint;
 }
 
-function RefundSection({ project, investorDetails, onRefundSuccess }: RefundSectionProps) {
+function RefundSection({ project, investorDetails, onRefundSuccess, transactionFee }: RefundSectionProps) {
   const { writeContract: claimRefund, data: refundHash } = useWriteContract();
   const { isSuccess: refundSuccess, isLoading: refundPending } = useWaitForTransactionReceipt({
     hash: refundHash,
@@ -675,6 +706,7 @@ function RefundSection({ project, investorDetails, onRefundSuccess }: RefundSect
       abi: EscrowVaultABI,
       functionName: 'claimRefund',
       args: [project.id],
+      value: transactionFee, // Include transaction fee
     });
   };
 
@@ -682,12 +714,19 @@ function RefundSection({ project, investorDetails, onRefundSuccess }: RefundSect
     return null;
   }
 
+  const feeInPOL = formatEther(transactionFee);
+
   return (
     <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
       <h3 className="text-lg font-semibold text-red-400 mb-2">Refund Available</h3>
       <p className="text-slate-300 mb-4">
         This project has been cancelled. You can claim a refund of your investment.
       </p>
+      {transactionFee > 0n && (
+        <p className="text-slate-400 text-sm mb-4">
+          Transaction fee: {feeInPOL} POL
+        </p>
+      )}
       <div className="flex items-center justify-between">
         <span className="text-white font-semibold">
           Your Deposit: {formatUSDC(investorDetails.deposit)}
@@ -697,7 +736,7 @@ function RefundSection({ project, investorDetails, onRefundSuccess }: RefundSect
           disabled={refundPending}
           className="px-6 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 rounded-lg text-white font-semibold transition"
         >
-          {refundPending ? 'Processing...' : 'Claim Refund'}
+          {refundPending ? 'Processing...' : `Claim Refund${transactionFee > 0n ? ` (+ ${feeInPOL} POL)` : ''}`}
         </button>
       </div>
     </div>
@@ -705,7 +744,7 @@ function RefundSection({ project, investorDetails, onRefundSuccess }: RefundSect
 }
 
 // ============================================================================
-// PROJECT PAGE CONTENT (with searchParams)
+// PROJECT PAGE CONTENT
 // ============================================================================
 
 function ProjectPageContent() {
@@ -714,7 +753,7 @@ function ProjectPageContent() {
   const projectId = params?.id as string;
 
   const { address, isConnected } = useAccount();
-  const { kycData, tierInfo } = useKYC(); // Get KYC data from context
+  const { kycData, tierInfo } = useKYC();
 
   const [project, setProject] = useState<Project | null>(null);
   const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
@@ -726,10 +765,9 @@ function ProjectPageContent() {
   const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'card' | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [pendingInvestment, setPendingInvestment] = useState<number>(0);
+  const [transactionFee, setTransactionFee] = useState<bigint>(0n);
 
   const isOwner = project?.owner.toLowerCase() === address?.toLowerCase();
-
-  // NO useState for KYC - we derive from context instead
 
   // Handle payment redirect
   useEffect(() => {
@@ -756,10 +794,25 @@ function ProjectPageContent() {
       })) as Project;
 
       setProject(projectData);
-      // Clear pending investment once we have fresh blockchain data
       setPendingInvestment(0);
 
       const isCancelledOrFailed = projectData.status === 6 || projectData.status === 7;
+
+      // Load transaction fee from escrow vault
+      if (projectData.escrowVault && projectData.escrowVault !== ZERO_ADDRESS) {
+        try {
+          const fee = await publicClient.readContract({
+            address: projectData.escrowVault as Address,
+            abi: EscrowVaultABI,
+            functionName: 'transactionFee',
+          });
+          setTransactionFee(fee as bigint);
+          console.log('Transaction fee:', formatEther(fee as bigint), 'POL');
+        } catch (e) {
+          console.error('Failed to load transaction fee:', e);
+          setTransactionFee(0n);
+        }
+      }
 
       if (!isCancelledOrFailed && projectData.metadataURI && isValidIPFSHash(projectData.metadataURI)) {
         try {
@@ -817,12 +870,11 @@ function ProjectPageContent() {
             publicClient.readContract({
               address: projectData.escrowVault as Address,
               abi: EscrowVaultABI,
-              functionName: 'getInvestorDetails',  // Correct function name
+              functionName: 'getInvestorDetails',
               args: [BigInt(projectId), address],
             }),
           ]);
 
-          // fundingData is now a struct object
           const funding = fundingData as {
             projectId: bigint;
             fundingGoal: bigint;
@@ -839,7 +891,6 @@ function ProjectPageContent() {
             securityToken: string;
           };
 
-          // investorData is 4 return values
           const [amount, amountUSD, tokensMinted, refunded] = investorData as [bigint, bigint, bigint, boolean];
 
           let tokenBalance = 0n;
@@ -857,7 +908,7 @@ function ProjectPageContent() {
           }
 
           setInvestorDetails({
-            deposit: amountUSD,  // Use amountUSD (6 decimals) for display
+            deposit: amountUSD,
             refundsEnabled: funding.refundsEnabled,
             tokenBalance,
           });
@@ -883,19 +934,15 @@ function ProjectPageContent() {
     }
   }, [paymentSuccess]);
 
-  // NO useEffect for KYC check - we use context instead
-
   const projectName = metadata?.name || tokenInfo?.name || `Project #${projectId}`;
   const description = metadata?.description || 'No description available.';
   const imageUrl = metadata?.image ? convertIPFSUrl(metadata.image) : null;
 
   const fundingGoalUSD = project ? Number(project.fundingGoal) : 0;
-  // Include pending investment for optimistic UI
   const onChainRaisedUSD = project ? Number(project.totalRaised) / 1e6 : 0;
   const totalRaisedUSD = onChainRaisedUSD + pendingInvestment;
   const remainingCapacity = Math.max(0, fundingGoalUSD - totalRaisedUSD);
   
-  // KYC limit from context
   const kycRemainingLimit = kycData.tier === 'Diamond' ? Infinity : kycData.remainingLimit;
   const effectiveMaxInvestment = project 
     ? Math.min(Number(project.maxInvestment), remainingCapacity, kycRemainingLimit) 
@@ -911,17 +958,13 @@ function ProjectPageContent() {
   const isCancelled = project?.status === 6;
   const isFailed = project?.status === 7;
   
-  // KYC derived from context (not useState)
   const isKYCVerified = kycData.status === 'Approved' && kycData.tier !== 'None';
   const kycLoading = kycData.isLoading;
   
-  // canInvest includes KYC check
   const canInvest = project?.status === 2 && !isExpired && remainingCapacity > 0 && isKYCVerified && kycRemainingLimit > 0;
-  
-  // Show KYC warning when not verified but otherwise can invest
   const showKYCWarning = !kycLoading && !isKYCVerified && isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0;
 
-  const tokenPrice = 100; // cents
+  const tokenPrice = 100;
 
   if (loading) {
     return (
@@ -1067,6 +1110,15 @@ function ProjectPageContent() {
                     </p>
                   </div>
                 )}
+                {/* Transaction Fee Info */}
+                {transactionFee > 0n && (
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <p className="text-slate-400 text-sm">Transaction Fee</p>
+                    <p className="text-purple-400 text-lg font-semibold">
+                      {formatEther(transactionFee)} POL
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1155,6 +1207,7 @@ function ProjectPageContent() {
                 project={project}
                 investorDetails={investorDetails}
                 onRefundSuccess={loadData}
+                transactionFee={transactionFee}
               />
             )}
             {project && (project.status === 3 || project.status === 4 || project.status === 5) && (
@@ -1234,7 +1287,7 @@ function ProjectPageContent() {
               {/* KYC Warning */}
               {showKYCWarning && <KYCWarning />}
 
-              {/* KYC Limit Info - show when verified */}
+              {/* KYC Limit Info */}
               {isKYCVerified && isConnected && (
                 <div className="mb-4 p-3 bg-slate-700/50 rounded-lg">
                   <div className="flex items-center justify-between text-sm">
@@ -1247,6 +1300,18 @@ function ProjectPageContent() {
                       ) : (
                         `$${kycRemainingLimit.toLocaleString()} remaining`
                       )}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Transaction Fee Notice */}
+              {transactionFee > 0n && canInvest && isConnected && (
+                <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-purple-400">⛽</span>
+                    <span className="text-slate-300">
+                      Transaction fee: <span className="text-purple-400 font-medium">{formatEther(transactionFee)} POL</span>
                     </span>
                   </div>
                 </div>
@@ -1301,62 +1366,56 @@ function ProjectPageContent() {
                       minInvestment={Number(project.minInvestment)}
                       maxInvestment={effectiveMaxInvestment}
                       tokenPrice={tokenPrice}
-                     onSuccess={(amountInvested) => {
-                      // Add optimistic amount
-                      setPendingInvestment(prev => prev + amountInvested);
-                      setPaymentMethod(null);
-                      
-                      // Poll blockchain until it catches up (don't refresh immediately)
-                      const expectedTotal = totalRaisedUSD + amountInvested;
-                      
-                      const pollBlockchain = async () => {
-                        let attempts = 0;
-                        const maxAttempts = 30; // 30 seconds max
+                      onSuccess={(amountInvested) => {
+                        setPendingInvestment(prev => prev + amountInvested);
+                        setPaymentMethod(null);
                         
-                        const checkTotal = async () => {
-                          attempts++;
-                          try {
-                            const projectData = await publicClient.readContract({
-                              address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-                              abi: RWAProjectNFTABI,
-                              functionName: 'getProject',
-                              args: [BigInt(projectId)],
-                            }) as Project;
-                            
-                            const onChainTotal = Number(projectData.totalRaised) / 1e6;
-                            
-                            if (onChainTotal >= expectedTotal || attempts >= maxAttempts) {
-                              // Blockchain caught up or timeout - clear pending
-                              setPendingInvestment(0);
-                              await loadData(); // Now safe to refresh
-                            } else {
-                              // Keep polling every 1 second
-                              setTimeout(checkTotal, 1000);
+                        const expectedTotal = totalRaisedUSD + amountInvested;
+                        
+                        const pollBlockchain = async () => {
+                          let attempts = 0;
+                          const maxAttempts = 30;
+                          
+                          const checkTotal = async () => {
+                            attempts++;
+                            try {
+                              const projectData = await publicClient.readContract({
+                                address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+                                abi: RWAProjectNFTABI,
+                                functionName: 'getProject',
+                                args: [BigInt(projectId)],
+                              }) as Project;
+                              
+                              const onChainTotal = Number(projectData.totalRaised) / 1e6;
+                              
+                              if (onChainTotal >= expectedTotal || attempts >= maxAttempts) {
+                                setPendingInvestment(0);
+                                await loadData();
+                              } else {
+                                setTimeout(checkTotal, 1000);
+                              }
+                            } catch (error) {
+                              console.error('Polling error:', error);
+                              if (attempts >= maxAttempts) {
+                                setPendingInvestment(0);
+                                await loadData();
+                              } else {
+                                setTimeout(checkTotal, 1000);
+                              }
                             }
-                          } catch (error) {
-                            console.error('Polling error:', error);
-                            if (attempts >= maxAttempts) {
-                              setPendingInvestment(0);
-                              await loadData();
-                            } else {
-                              setTimeout(checkTotal, 1000);
-                            }
-                          }
+                          };
+                          
+                          setTimeout(checkTotal, 2000);
                         };
                         
-                        // Start polling after 2 seconds (give blockchain time)
-                        setTimeout(checkTotal, 2000);
-                      };
-                      
-                      pollBlockchain();
-                    }}
+                        pollBlockchain();
+                      }}
                       onCancel={() => setPaymentMethod(null)}
                     />
                   )}
                 </div>
               )}
 
-              {/* === MODIFIED: Show connect wallet only if KYC verified === */}
               {!isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0 && (
                 <div className="text-center py-4">
                   <p className="text-slate-400 mb-4">Connect your wallet to invest</p>
@@ -1422,6 +1481,7 @@ function ProjectPageContent() {
           effectiveMaxInvestment={effectiveMaxInvestment}
           kycRemainingLimit={kycRemainingLimit}
           kycTier={kycData.tier}
+          transactionFee={transactionFee}
           onClose={() => setShowInvestModal(false)}
           onSuccess={() => {
             setShowInvestModal(false);
@@ -1435,7 +1495,7 @@ function ProjectPageContent() {
 }
 
 // ============================================================================
-// MAIN PAGE COMPONENT (with Suspense for useSearchParams)
+// MAIN PAGE COMPONENT
 // ============================================================================
 
 export default function ProjectDetailPage() {
