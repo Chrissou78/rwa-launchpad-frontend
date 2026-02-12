@@ -7,12 +7,7 @@ import Link from 'next/link';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, formatEther, parseEther, isAddress } from 'viem';
 import { polygonAmoy } from 'viem/chains';
-
-const CONTRACTS = {
-  RWAProjectNFT: '0x4497e4EA43C1A1Cd2B719fF0E4cea376364c1315',
-  KYCManager: '0x190c0906e4c7c569Dc76841fB6853F55EB34cc51',
-  RWALaunchpadFactory: '0x6E76D92C2cC9d4AD4587D8E6E8e877Bba8473Fc9',
-};
+import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -117,10 +112,13 @@ const escrowAbi = [
           { name: 'description', type: 'string' },
           { name: 'percentage', type: 'uint256' },
           { name: 'status', type: 'uint8' },
+          { name: 'proofURI', type: 'string' },
           { name: 'submittedAt', type: 'uint256' },
           { name: 'approvedAt', type: 'uint256' },
-          { name: 'proofURI', type: 'string' },
+          { name: 'releasedAmount', type: 'uint256' },
           { name: 'rejectionReason', type: 'string' },
+          { name: 'disputeRaiser', type: 'address' },
+          { name: 'disputeReason', type: 'string' },
         ],
       },
     ],
@@ -155,27 +153,6 @@ const escrowAbi = [
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [{ name: '_projectId', type: 'uint256' }, { name: '_milestoneIndex', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    name: 'setTransactionFee',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: '_fee', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    name: 'setFeeRecipient',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: '_feeRecipient', type: 'address' }],
-    outputs: [],
-  },
-  {
-    name: 'withdrawTransactionFees',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [],
     outputs: [],
   },
 ] as const;
@@ -218,18 +195,32 @@ const IdentityRegistryABI = [
 
 const RWALaunchpadFactoryABI = [
   {
-    name: 'defaultIdentityRegistry',
+    name: 'identityRegistry',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'address' }],
   },
   {
-    name: 'setDefaultIdentityRegistry',
+    name: 'setIdentityRegistry',
     type: 'function',
     stateMutability: 'nonpayable',
-    inputs: [{ name: '_registry', type: 'address' }],
+    inputs: [{ name: 'newRegistry_', type: 'address' }],
     outputs: [],
+  },
+  {
+    name: 'nativePriceFeed',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'defaultStablecoins',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address[]' }],
   },
 ] as const;
 
@@ -266,12 +257,14 @@ const STATUS_COLORS: Record<number, string> = {
   7: 'bg-red-700',
 };
 
+// FIXED: Correct milestone status mapping matching contract enum
 const MILESTONE_STATUS: Record<number, { label: string; color: string }> = {
   0: { label: 'Pending', color: 'bg-gray-500' },
   1: { label: 'Submitted', color: 'bg-yellow-500' },
   2: { label: 'Approved', color: 'bg-green-500' },
   3: { label: 'Rejected', color: 'bg-red-500' },
-  4: { label: 'Released', color: 'bg-blue-500' },
+  4: { label: 'Disputed', color: 'bg-orange-500' },
+  5: { label: 'Released', color: 'bg-blue-500' },
 };
 
 type AdminTab = 'overview' | 'projects' | 'kyc' | 'identity' | 'factory' | 'settings';
@@ -299,10 +292,13 @@ interface Milestone {
   description: string;
   percentage: bigint;
   status: number;
+  proofURI: string;
   submittedAt: bigint;
   approvedAt: bigint;
-  proofURI: string;
+  releasedAmount: bigint;
   rejectionReason: string;
+  disputeRaiser: string;
+  disputeReason: string;
 }
 
 interface VaultSettings {
@@ -321,7 +317,12 @@ const publicClient = createPublicClient({
 // Helper functions
 const formatUSD = (amount: bigint): string => {
   const value = Number(amount) / 1e6;
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  return new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 };
 
 const convertIPFSUrl = (url: string): string => {
@@ -329,6 +330,10 @@ const convertIPFSUrl = (url: string): string => {
     return url.replace('ipfs://', 'https://ipfs.io/ipfs/');
   }
   return url;
+};
+
+const getExplorerUrl = (address: string, type: 'address' | 'tx' = 'address') => {
+  return `${EXPLORER_URL}/${type}/${address}`;
 };
 
 // ==================== OVERVIEW COMPONENT ====================
@@ -437,20 +442,25 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedMilestoneIndex, setSelectedMilestoneIndex] = useState<number | null>(null);
+  const [escrowFunding, setEscrowFunding] = useState<any>(null);
 
-  const { writeContract, data: txHash } = useWriteContract();
-  const { isSuccess: txSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+  const { writeContract, data: txHash, reset: resetTx } = useWriteContract();
+  const { isSuccess: txSuccess, isLoading: txLoading } = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
-    if (txSuccess) {
+    if (txSuccess && selectedProject) {
       setProcessing(false);
       setResult({ success: true, message: 'Transaction confirmed!' });
-      onRefresh();
-      loadMilestones();
+      setTimeout(() => {
+        loadMilestones();
+        loadEscrowFunding();
+        onRefresh();
+      }, 2000);
+      resetTx();
     }
   }, [txSuccess]);
 
-  const loadMilestones = async () => {
+  const loadMilestones = useCallback(async () => {
     if (!selectedProject || selectedProject.escrowVault === ZERO_ADDRESS) return;
     
     setMilestonesLoading(true);
@@ -464,20 +474,49 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
       setMilestones(data as Milestone[]);
     } catch (error) {
       console.error('Error loading milestones:', error);
+      setMilestones([]);
     } finally {
       setMilestonesLoading(false);
     }
-  };
+  }, [selectedProject]);
+
+  const loadEscrowFunding = useCallback(async () => {
+    if (!selectedProject || selectedProject.escrowVault === ZERO_ADDRESS) return;
+    
+    try {
+      const data = await publicClient.readContract({
+        address: selectedProject.escrowVault as `0x${string}`,
+        abi: escrowAbi,
+        functionName: 'getProjectFunding',
+        args: [BigInt(selectedProject.id)],
+      });
+      setEscrowFunding(data);
+    } catch (error) {
+      console.error('Error loading escrow funding:', error);
+      setEscrowFunding(null);
+    }
+  }, [selectedProject]);
 
   useEffect(() => {
     if (selectedProject && showDetailModal) {
       loadMilestones();
+      loadEscrowFunding();
     }
-  }, [selectedProject, showDetailModal]);
+  }, [selectedProject, showDetailModal, loadMilestones, loadEscrowFunding]);
 
   const openDetailModal = (project: Project) => {
     setSelectedProject(project);
     setShowDetailModal(true);
+    setResult(null);
+    setMilestones([]);
+    setEscrowFunding(null);
+  };
+
+  const closeDetailModal = () => {
+    setShowDetailModal(false);
+    setSelectedProject(null);
+    setMilestones([]);
+    setEscrowFunding(null);
     setResult(null);
   };
 
@@ -591,6 +630,11 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
     }
   };
 
+  const handleRefreshMilestones = () => {
+    loadMilestones();
+    loadEscrowFunding();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -636,30 +680,12 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
                   )}
                 </td>
                 <td className="px-4 py-4">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => openDetailModal(project)}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs text-white"
-                    >
-                      Details
-                    </button>
-                    {project.status === 2 && (
-                      <button
-                        onClick={() => openCancelModal(project)}
-                        className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs text-white"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    {project.status === 6 && !project.refundsEnabled && project.escrowVault !== ZERO_ADDRESS && (
-                      <button
-                        onClick={() => openRefundModal(project)}
-                        className="px-3 py-1 bg-orange-600 hover:bg-orange-700 rounded text-xs text-white"
-                      >
-                        Enable Refunds
-                      </button>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => openDetailModal(project)}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs text-white"
+                  >
+                    Details
+                  </button>
                 </td>
               </tr>
             ))}
@@ -670,7 +696,7 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
       {/* Detail Modal */}
       {showDetailModal && selectedProject && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-start mb-6">
                 <div>
@@ -680,7 +706,7 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
                   </span>
                 </div>
                 <button
-                  onClick={() => setShowDetailModal(false)}
+                  onClick={closeDetailModal}
                   className="text-gray-400 hover:text-white text-2xl"
                 >
                   ×
@@ -690,41 +716,50 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-700 rounded-lg p-4">
                   <p className="text-gray-400 text-sm">Funding Goal</p>
-                  <p className="text-white text-lg font-semibold">{formatUSD(selectedProject.fundingGoal)}</p>
+                  <p className="text-white text-lg font-semibold">
+                    {escrowFunding ? formatUSD(escrowFunding.fundingGoal) : formatUSD(selectedProject.fundingGoal)}
+                  </p>
                 </div>
                 <div className="bg-gray-700 rounded-lg p-4">
                   <p className="text-gray-400 text-sm">Total Raised</p>
-                  <p className="text-white text-lg font-semibold">{formatUSD(selectedProject.totalRaised)}</p>
+                  <p className="text-white text-lg font-semibold">
+                    {escrowFunding ? formatUSD(escrowFunding.totalRaised) : formatUSD(selectedProject.totalRaised)}
+                  </p>
                 </div>
                 <div className="bg-gray-700 rounded-lg p-4">
                   <p className="text-gray-400 text-sm">Min Investment</p>
-                  <p className="text-white text-lg font-semibold">{formatUSD(selectedProject.minInvestment)}</p>
+                  <p className="text-white text-lg font-semibold">
+                    {escrowFunding ? formatUSD(escrowFunding.minInvestment) : formatUSD(selectedProject.minInvestment)}
+                  </p>
                 </div>
                 <div className="bg-gray-700 rounded-lg p-4">
                   <p className="text-gray-400 text-sm">Max Investment</p>
-                  <p className="text-white text-lg font-semibold">{formatUSD(selectedProject.maxInvestment)}</p>
+                  <p className="text-white text-lg font-semibold">
+                    {escrowFunding ? formatUSD(escrowFunding.maxInvestment) : formatUSD(selectedProject.maxInvestment)}
+                  </p>
                 </div>
               </div>
 
+              {/* Contracts section */}
               <div className="mb-6">
                 <h4 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Contracts</h4>
                 <div className="space-y-2">
                   <div className="bg-gray-700 rounded-lg p-3">
                     <p className="text-gray-400 text-xs">Owner</p>
                     <a
-                      href={`https://amoy.polygonscan.com/address/${selectedProject.owner}`}
+                      href={getExplorerUrl(escrowFunding?.projectOwner || selectedProject.owner)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-400 font-mono text-sm break-all hover:underline"
                     >
-                      {selectedProject.owner}
+                      {escrowFunding?.projectOwner || selectedProject.owner}
                     </a>
                   </div>
                   {selectedProject.securityToken !== ZERO_ADDRESS && (
                     <div className="bg-gray-700 rounded-lg p-3">
                       <p className="text-gray-400 text-xs">Security Token</p>
                       <a
-                        href={`https://amoy.polygonscan.com/address/${selectedProject.securityToken}`}
+                        href={getExplorerUrl(selectedProject.securityToken)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 font-mono text-sm break-all hover:underline"
@@ -737,7 +772,7 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
                     <div className="bg-gray-700 rounded-lg p-3">
                       <p className="text-gray-400 text-xs">Escrow Vault</p>
                       <a
-                        href={`https://amoy.polygonscan.com/address/${selectedProject.escrowVault}`}
+                        href={getExplorerUrl(selectedProject.escrowVault)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 font-mono text-sm break-all hover:underline"
@@ -750,73 +785,115 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
               </div>
 
               {/* Milestone Management */}
-              {selectedProject.status >= 3 && selectedProject.escrowVault !== ZERO_ADDRESS && (
+              {selectedProject.escrowVault !== ZERO_ADDRESS && (
                 <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-4">Milestone Management</h4>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Milestone Management</h4>
+                    <button
+                      onClick={handleRefreshMilestones}
+                      disabled={milestonesLoading}
+                      className="px-3 py-1 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 rounded text-xs text-white"
+                    >
+                      {milestonesLoading ? 'Loading...' : 'Refresh'}
+                    </button>
+                  </div>
+                  
                   {milestonesLoading ? (
-                    <p className="text-gray-400">Loading milestones...</p>
+                    <div className="bg-gray-700 rounded-lg p-4">
+                      <p className="text-gray-400">Loading milestones...</p>
+                    </div>
                   ) : milestones.length === 0 ? (
-                    <p className="text-gray-400">No milestones created yet.</p>
+                    <div className="bg-gray-700 rounded-lg p-4">
+                      <p className="text-gray-400">No milestones created yet.</p>
+                    </div>
                   ) : (
                     <div className="space-y-3">
-                      {milestones.map((milestone, index) => (
-                        <div key={index} className="bg-gray-700 rounded-lg p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <p className="text-white font-medium">{milestone.description}</p>
-                              <p className="text-gray-400 text-sm">{Number(milestone.percentage) / 100}% of funds</p>
+                      {milestones.map((milestone, index) => {
+                        const statusInfo = MILESTONE_STATUS[milestone.status] || { label: 'Unknown', color: 'bg-gray-500' };
+                        const percentageDisplay = Number(milestone.percentage) / 100;
+                        
+                        return (
+                          <div key={index} className="bg-gray-700 rounded-lg p-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex-1">
+                                <p className="text-white font-medium">
+                                  {milestone.description || `Milestone ${index + 1}`}
+                                </p>
+                                <p className="text-gray-400 text-sm">{percentageDisplay}% of funds</p>
+                              </div>
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium text-white ${statusInfo.color}`}>
+                                {statusInfo.label}
+                              </span>
                             </div>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium text-white ${MILESTONE_STATUS[milestone.status]?.color || 'bg-gray-500'}`}>
-                              {MILESTONE_STATUS[milestone.status]?.label || 'Unknown'}
-                            </span>
-                          </div>
-                          
-                          {milestone.proofURI && (
-                            <p className="text-gray-400 text-xs mb-2">
-                              Proof: <a href={convertIPFSUrl(milestone.proofURI)} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{milestone.proofURI}</a>
-                            </p>
-                          )}
-                          
-                          {milestone.rejectionReason && (
-                            <p className="text-red-400 text-sm mb-2">Rejection reason: {milestone.rejectionReason}</p>
-                          )}
+                            
+                            {milestone.proofURI && (
+                              <div className="mb-2">
+                                <p className="text-gray-400 text-xs">Proof:</p>
+                                <a 
+                                  href={convertIPFSUrl(milestone.proofURI)} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="text-blue-400 text-sm hover:underline break-all"
+                                >
+                                  {milestone.proofURI}
+                                </a>
+                              </div>
+                            )}
+                            
+                            {milestone.rejectionReason && (
+                              <p className="text-red-400 text-sm mb-2">
+                                <span className="font-medium">Rejection reason:</span> {milestone.rejectionReason}
+                              </p>
+                            )}
 
-                          <div className="flex gap-2 mt-3">
-                            {milestone.status === 1 && (
-                              <>
+                            <div className="flex gap-2 mt-3">
+                              {milestone.status === 1 && (
+                                <>
+                                  <button
+                                    onClick={() => handleApproveMilestone(index)}
+                                    disabled={processing || txLoading}
+                                    className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-xs text-white"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedMilestoneIndex(index);
+                                      setShowRejectModal(true);
+                                    }}
+                                    disabled={processing || txLoading}
+                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded text-xs text-white"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                              {milestone.status === 2 && (
                                 <button
-                                  onClick={() => handleApproveMilestone(index)}
-                                  disabled={processing}
-                                  className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-xs text-white"
+                                  onClick={() => handleReleaseFunds(index)}
+                                  disabled={processing || txLoading}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded text-xs text-white"
                                 >
-                                  Approve
+                                  Release Funds
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedMilestoneIndex(index);
-                                    setShowRejectModal(true);
-                                  }}
-                                  disabled={processing}
-                                  className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded text-xs text-white"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            )}
-                            {milestone.status === 2 && (
-                              <button
-                                onClick={() => handleReleaseFunds(index)}
-                                disabled={processing}
-                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded text-xs text-white"
-                              >
-                                Release Funds
-                              </button>
-                            )}
+                              )}
+                              {milestone.status === 5 && (
+                                <span className="text-green-400 text-sm">
+                                  ✓ Funds released
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
+                </div>
+              )}
+
+              {(processing || txLoading) && (
+                <div className="p-4 rounded-lg bg-blue-900/50 text-blue-400 mb-4">
+                  Processing transaction... Please wait and confirm in your wallet.
                 </div>
               )}
 
@@ -825,72 +902,6 @@ function ProjectManagement({ projects, onRefresh }: { projects: Project[]; onRef
                   {result.message}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cancel Modal */}
-      {showCancelModal && selectedProject && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold text-white mb-4">Cancel Project</h3>
-            <p className="text-gray-300 mb-6">
-              Are you sure you want to cancel <strong>{selectedProject.name || `Project #${selectedProject.id}`}</strong>?
-              This action cannot be undone.
-            </p>
-            {result && (
-              <div className={`mb-4 p-3 rounded-lg ${result.success ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
-                {result.message}
-              </div>
-            )}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowCancelModal(false)}
-                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white"
-              >
-                Close
-              </button>
-              <button
-                onClick={handleCancel}
-                disabled={processing}
-                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg text-white"
-              >
-                {processing ? 'Processing...' : 'Cancel Project'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Refund Modal */}
-      {showRefundModal && selectedProject && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold text-white mb-4">Enable Refunds</h3>
-            <p className="text-gray-300 mb-6">
-              Enable refunds for <strong>{selectedProject.name || `Project #${selectedProject.id}`}</strong>?
-              Investors will be able to claim their funds back.
-            </p>
-            {result && (
-              <div className={`mb-4 p-3 rounded-lg ${result.success ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
-                {result.message}
-              </div>
-            )}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowRefundModal(false)}
-                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white"
-              >
-                Close
-              </button>
-              <button
-                onClick={handleEnableRefunds}
-                disabled={processing}
-                className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 rounded-lg text-white"
-              >
-                {processing ? 'Processing...' : 'Enable Refunds'}
-              </button>
             </div>
           </div>
         </div>
@@ -958,13 +969,13 @@ function IdentityManagement({ projects }: { projects: Project[] }) {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [userAddress, setUserAddress] = useState('');
   const [identityContract, setIdentityContract] = useState(ZERO_ADDRESS);
-  const [countryCode, setCountryCode] = useState('840'); // USA
+  const [countryCode, setCountryCode] = useState('840');
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [identityRegistry, setIdentityRegistry] = useState<string | null>(null);
   const [isVerified, setIsVerified] = useState<boolean | null>(null);
 
-  const { writeContract, data: txHash } = useWriteContract();
+  const { writeContract, data: txHash, reset: resetTx } = useWriteContract();
   const { isSuccess: txSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
@@ -972,6 +983,7 @@ function IdentityManagement({ projects }: { projects: Project[] }) {
       setProcessing(false);
       setResult({ success: true, message: 'Identity registered successfully!' });
       checkVerificationStatus();
+      resetTx();
     }
   }, [txSuccess]);
 
@@ -1068,7 +1080,7 @@ function IdentityManagement({ projects }: { projects: Project[] }) {
           <div className="mb-4 p-3 bg-gray-700 rounded-lg">
             <p className="text-gray-400 text-xs">Identity Registry</p>
             <a
-              href={`https://amoy.polygonscan.com/address/${identityRegistry}`}
+              href={getExplorerUrl(identityRegistry)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-400 font-mono text-sm break-all hover:underline"
@@ -1144,37 +1156,59 @@ function IdentityManagement({ projects }: { projects: Project[] }) {
 
 // ==================== FACTORY SETTINGS COMPONENT ====================
 function FactorySettings() {
-  const [defaultRegistry, setDefaultRegistry] = useState<string | null>(null);
+  const [factoryData, setFactoryData] = useState<{
+    identityRegistry: string;
+    nativePriceFeed: string;
+    stablecoins: string[];
+  } | null>(null);
   const [newRegistry, setNewRegistry] = useState('');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const { writeContract, data: txHash } = useWriteContract();
+  const { writeContract, data: txHash, reset: resetTx } = useWriteContract();
   const { isSuccess: txSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
-    fetchDefaultRegistry();
+    fetchFactoryData();
   }, []);
 
   useEffect(() => {
     if (txSuccess) {
       setProcessing(false);
       setResult({ success: true, message: 'Registry updated successfully!' });
-      fetchDefaultRegistry();
+      fetchFactoryData();
+      resetTx();
     }
   }, [txSuccess]);
 
-  const fetchDefaultRegistry = async () => {
+  const fetchFactoryData = async () => {
     try {
-      const registry = await publicClient.readContract({
-        address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
-        abi: RWALaunchpadFactoryABI,
-        functionName: 'defaultIdentityRegistry',
+      const [registry, priceFeed, stablecoins] = await Promise.all([
+        publicClient.readContract({
+          address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
+          abi: RWALaunchpadFactoryABI,
+          functionName: 'identityRegistry',
+        }),
+        publicClient.readContract({
+          address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
+          abi: RWALaunchpadFactoryABI,
+          functionName: 'nativePriceFeed',
+        }),
+        publicClient.readContract({
+          address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
+          abi: RWALaunchpadFactoryABI,
+          functionName: 'defaultStablecoins',
+        }),
+      ]);
+      
+      setFactoryData({
+        identityRegistry: registry as string,
+        nativePriceFeed: priceFeed as string,
+        stablecoins: stablecoins as string[],
       });
-      setDefaultRegistry(registry as string);
     } catch (error) {
-      console.error('Error fetching default registry:', error);
+      console.error('Error fetching factory data:', error);
     } finally {
       setLoading(false);
     }
@@ -1190,7 +1224,7 @@ function FactorySettings() {
       writeContract({
         address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
         abi: RWALaunchpadFactoryABI,
-        functionName: 'setDefaultIdentityRegistry',
+        functionName: 'setIdentityRegistry',
         args: [newRegistry as `0x${string}`],
       });
     } catch (error) {
@@ -1203,23 +1237,24 @@ function FactorySettings() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-white">Factory Settings</h2>
 
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Default Identity Registry</h3>
-        
-        {loading ? (
+      {loading ? (
+        <div className="bg-gray-800 rounded-xl p-6">
           <p className="text-gray-400">Loading...</p>
-        ) : (
-          <>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gray-800 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">Identity Registry</h3>
             <div className="mb-4 p-3 bg-gray-700 rounded-lg">
               <p className="text-gray-400 text-xs">Current Registry</p>
-              {defaultRegistry && defaultRegistry !== ZERO_ADDRESS ? (
+              {factoryData?.identityRegistry && factoryData.identityRegistry !== ZERO_ADDRESS ? (
                 <a
-                  href={`https://amoy.polygonscan.com/address/${defaultRegistry}`}
+                  href={getExplorerUrl(factoryData.identityRegistry)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-400 font-mono text-sm break-all hover:underline"
                 >
-                  {defaultRegistry}
+                  {factoryData.identityRegistry}
                 </a>
               ) : (
                 <p className="text-yellow-400">Not set</p>
@@ -1252,9 +1287,51 @@ function FactorySettings() {
                 {processing ? 'Processing...' : 'Update Registry'}
               </button>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">Price Feed Configuration</h3>
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-700 rounded-lg">
+                <p className="text-gray-400 text-xs">Native Price Feed (POL/USD)</p>
+                {factoryData?.nativePriceFeed && factoryData.nativePriceFeed !== ZERO_ADDRESS ? (
+                  <a
+                    href={getExplorerUrl(factoryData.nativePriceFeed)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 font-mono text-sm break-all hover:underline"
+                  >
+                    {factoryData.nativePriceFeed}
+                  </a>
+                ) : (
+                  <p className="text-red-400">Not set - new projects will fail!</p>
+                )}
+              </div>
+
+              <div className="p-3 bg-gray-700 rounded-lg">
+                <p className="text-gray-400 text-xs mb-2">Default Stablecoins</p>
+                {factoryData?.stablecoins && factoryData.stablecoins.length > 0 ? (
+                  <div className="space-y-1">
+                    {factoryData.stablecoins.map((coin, i) => (
+                      <a
+                        key={i}
+                        href={getExplorerUrl(coin)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-blue-400 font-mono text-xs hover:underline"
+                      >
+                        {coin}
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-yellow-400">No stablecoins configured</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1454,7 +1531,7 @@ function PlatformSettings() {
             <p className="text-gray-400 text-xs">Current Recipient</p>
             {settings?.feeRecipient && settings.feeRecipient !== ZERO_ADDRESS ? (
               <a
-                href={`https://amoy.polygonscan.com/address/${settings.feeRecipient}`}
+                href={getExplorerUrl(settings.feeRecipient)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-400 font-mono text-sm break-all hover:underline"
@@ -1483,7 +1560,7 @@ function PlatformSettings() {
                 <div className="flex justify-between items-start">
                   <div>
                     <a
-                      href={`https://amoy.polygonscan.com/address/${vault.address}`}
+                      href={getExplorerUrl(vault.address)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-400 font-mono text-sm hover:underline"
@@ -1620,7 +1697,7 @@ function PlatformSettings() {
 
 // ==================== MAIN ADMIN PAGE ====================
 export default function AdminPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [projects, setProjects] = useState<Project[]>([]);
   const [kycStats, setKycStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -1651,6 +1728,12 @@ export default function AdminPage() {
 
       for (const data of projectData) {
         const project = data as any;
+        
+        // Skip burned projects (owner is zero address)
+        if (project.owner === ZERO_ADDRESS) {
+          continue;
+        }
+
         let name = `Project #${project.id}`;
         let refundsEnabled = false;
 
@@ -1710,7 +1793,7 @@ export default function AdminPage() {
   const fetchKYCStats = useCallback(async () => {
     try {
       const stats = await publicClient.readContract({
-        address: CONTRACTS.KYCManager as `0x${string}`,
+        address: CONTRACTS.IdentityRegistry as `0x${string}`,
         abi: kycManagerAbi,
         functionName: 'getKYCStats',
       });
@@ -1723,6 +1806,7 @@ export default function AdminPage() {
       });
     } catch (error) {
       console.error('Error fetching KYC stats:', error);
+      // KYC stats might not be available, use defaults
     }
   }, []);
 
