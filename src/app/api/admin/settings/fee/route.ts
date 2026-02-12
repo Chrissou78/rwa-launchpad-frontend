@@ -91,44 +91,59 @@ const escrowAbi = [
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // Helper to get all unique escrow vaults
-async function getAllEscrowVaults(publicClient: any): Promise<string[]> {
-  const total = await publicClient.readContract({
-    address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-    abi: projectNftAbi,
-    functionName: 'totalProjects',
-  }) as bigint;
+async function getAllEscrowVaults(publicClient: ReturnType<typeof createPublicClient>): Promise<string[]> {
+  try {
+    const total = await publicClient.readContract({
+      address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+      abi: projectNftAbi,
+      functionName: 'totalProjects',
+    });
 
-  const escrowVaults = new Set<string>();
+    console.log('Total projects:', total);
 
-  for (let i = 1; i <= Number(total); i++) {
-    try {
-      const project = await publicClient.readContract({
-        address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-        abi: projectNftAbi,
-        functionName: 'getProject',
-        args: [BigInt(i)],
-      }) as any;
+    const escrowVaults = new Set<string>();
 
-      if (project.escrowVault && project.escrowVault !== ZERO_ADDRESS) {
-        escrowVaults.add(project.escrowVault);
+    for (let i = 1; i <= Number(total); i++) {
+      try {
+        const project = await publicClient.readContract({
+          address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+          abi: projectNftAbi,
+          functionName: 'getProject',
+          args: [BigInt(i)],
+        });
+
+        const escrowVault = (project as any).escrowVault;
+        console.log(`Project ${i} escrowVault:`, escrowVault);
+
+        if (escrowVault && escrowVault !== ZERO_ADDRESS) {
+          escrowVaults.add(escrowVault);
+        }
+      } catch (e) {
+        console.error(`Error fetching project ${i}:`, e);
       }
-    } catch (e) {
-      console.error(`Error fetching project ${i}:`, e);
     }
-  }
 
-  return Array.from(escrowVaults);
+    return Array.from(escrowVaults);
+  } catch (e) {
+    console.error('Error getting escrow vaults:', e);
+    return [];
+  }
 }
 
 // GET - Fetch current fee settings from all escrow vaults
 export async function GET() {
   try {
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
+    console.log('Using RPC:', rpcUrl);
+    console.log('Project NFT address:', CONTRACTS.RWAProjectNFT);
+
     const publicClient = createPublicClient({
       chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      transport: http(rpcUrl),
     });
 
     const escrowVaults = await getAllEscrowVaults(publicClient);
+    console.log('Found escrow vaults:', escrowVaults);
 
     if (escrowVaults.length === 0) {
       return NextResponse.json({
@@ -163,52 +178,49 @@ export async function GET() {
             }),
           ]);
 
+          console.log(`Vault ${vault}:`, { transactionFee, collectedFees, feeRecipient });
+
           return {
             address: vault,
-            transactionFee: transactionFee as bigint,
-            collectedFees: collectedFees as bigint,
+            transactionFee: formatEther(transactionFee as bigint),
+            collectedFees: formatEther(collectedFees as bigint),
             feeRecipient: feeRecipient as string,
-            error: undefined,
+            error: null,
           };
         } catch (e: any) {
           console.error(`Error fetching settings for vault ${vault}:`, e);
           return {
             address: vault,
-            transactionFee: 0n,
-            collectedFees: 0n,
+            transactionFee: '0',
+            collectedFees: '0',
             feeRecipient: ZERO_ADDRESS,
-            error: e.message,
+            error: e.message || 'Failed to read vault',
           };
         }
       })
     );
 
     // Calculate totals
-    const totalCollectedFeesWei = vaultDetails.reduce(
-      (sum, v) => sum + v.collectedFees,
-      0n
-    );
+    let totalCollectedFees = 0;
+    for (const v of vaultDetails) {
+      totalCollectedFees += parseFloat(v.collectedFees || '0');
+    }
 
-    // Use first vault's settings as "current" (they should all be the same)
+    // Use first valid vault's settings as "current"
     const firstValidVault = vaultDetails.find((v) => !v.error) || vaultDetails[0];
 
-    // Format vault details for frontend
-    const formattedVaultDetails = vaultDetails.map((v) => ({
-      address: v.address,
-      transactionFee: v.transactionFee,
-      collectedFees: v.collectedFees,
-      feeRecipient: v.feeRecipient,
-      error: v.error,
-    }));
-
-    return NextResponse.json({
+    const response = {
       success: true,
-      transactionFee: formatEther(firstValidVault?.transactionFee || 0n),
-      totalCollectedFees: formatEther(totalCollectedFeesWei),
+      transactionFee: firstValidVault?.transactionFee || '0',
+      totalCollectedFees: totalCollectedFees.toString(),
       feeRecipient: firstValidVault?.feeRecipient || ZERO_ADDRESS,
       vaultCount: escrowVaults.length,
-      vaultDetails: formattedVaultDetails,
-    });
+      vaultDetails: vaultDetails,
+    };
+
+    console.log('API Response:', response);
+
+    return NextResponse.json(response);
   } catch (error: any) {
     console.error('Error fetching fee settings:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -221,24 +233,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, value } = body;
 
+    console.log('POST request:', { action, value });
+
     if (!process.env.VERIFIER_PRIVATE_KEY) {
-      return NextResponse.json({ success: false, error: 'Server not configured' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'Server not configured - missing VERIFIER_PRIVATE_KEY' }, { status: 500 });
     }
 
     const account = privateKeyToAccount(process.env.VERIFIER_PRIVATE_KEY as `0x${string}`);
 
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
+
     const walletClient = createWalletClient({
       account,
       chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      transport: http(rpcUrl),
     });
 
     const publicClient = createPublicClient({
       chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      transport: http(rpcUrl),
     });
 
     const escrowVaults = await getAllEscrowVaults(publicClient);
+
+    console.log('Found vaults for update:', escrowVaults);
 
     if (escrowVaults.length === 0) {
       return NextResponse.json({ success: false, error: 'No escrow vaults found' }, { status: 400 });
@@ -247,9 +265,10 @@ export async function POST(request: NextRequest) {
     const results: string[] = [];
 
     switch (action) {
-      case 'setTransactionFee':
-        // Update fee on ALL escrow vaults
+      case 'setTransactionFee': {
         const feeInWei = parseEther(value.toString());
+        console.log('Setting fee to:', feeInWei.toString(), 'wei');
+        
         for (const vault of escrowVaults) {
           try {
             const hash = await walletClient.writeContract({
@@ -259,18 +278,22 @@ export async function POST(request: NextRequest) {
               args: [feeInWei],
             });
             await publicClient.waitForTransactionReceipt({ hash });
-            results.push(`✓ ${vault.slice(0, 10)}...: ${hash}`);
+            results.push(`✓ ${vault.slice(0, 10)}...: tx ${hash.slice(0, 10)}...`);
           } catch (e: any) {
-            results.push(`✗ ${vault.slice(0, 10)}...: ${e.message}`);
+            console.error(`Error setting fee on ${vault}:`, e);
+            results.push(`✗ ${vault.slice(0, 10)}...: ${e.shortMessage || e.message}`);
           }
         }
         break;
+      }
 
-      case 'setFeeRecipient':
-        // Update recipient on ALL escrow vaults
+      case 'setFeeRecipient': {
         if (!/^0x[a-fA-F0-9]{40}$/.test(value)) {
           return NextResponse.json({ success: false, error: 'Invalid address format' }, { status: 400 });
         }
+        
+        console.log('Setting recipient to:', value);
+        
         for (const vault of escrowVaults) {
           try {
             const hash = await walletClient.writeContract({
@@ -280,18 +303,20 @@ export async function POST(request: NextRequest) {
               args: [value as `0x${string}`],
             });
             await publicClient.waitForTransactionReceipt({ hash });
-            results.push(`✓ ${vault.slice(0, 10)}...: ${hash}`);
+            results.push(`✓ ${vault.slice(0, 10)}...: tx ${hash.slice(0, 10)}...`);
           } catch (e: any) {
-            results.push(`✗ ${vault.slice(0, 10)}...: ${e.message}`);
+            console.error(`Error setting recipient on ${vault}:`, e);
+            results.push(`✗ ${vault.slice(0, 10)}...: ${e.shortMessage || e.message}`);
           }
         }
         break;
+      }
 
-      case 'withdrawFees':
-        // Withdraw from ALL escrow vaults that have fees
+      case 'withdrawFees': {
+        console.log('Withdrawing fees from all vaults');
+        
         for (const vault of escrowVaults) {
           try {
-            // Check if this vault has fees to withdraw
             const collectedFees = await publicClient.readContract({
               address: vault as `0x${string}`,
               abi: escrowAbi,
@@ -305,18 +330,20 @@ export async function POST(request: NextRequest) {
                 functionName: 'withdrawTransactionFees',
               });
               await publicClient.waitForTransactionReceipt({ hash });
-              results.push(`✓ ${vault.slice(0, 10)}...: Withdrew ${formatEther(collectedFees)} POL (${hash})`);
+              results.push(`✓ ${vault.slice(0, 10)}...: Withdrew ${formatEther(collectedFees)} POL`);
             } else {
               results.push(`- ${vault.slice(0, 10)}...: No fees to withdraw`);
             }
           } catch (e: any) {
-            results.push(`✗ ${vault.slice(0, 10)}...: ${e.message}`);
+            console.error(`Error withdrawing from ${vault}:`, e);
+            results.push(`✗ ${vault.slice(0, 10)}...: ${e.shortMessage || e.message}`);
           }
         }
         break;
+      }
 
       default:
-        return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+        return NextResponse.json({ success: false, error: `Invalid action: ${action}` }, { status: 400 });
     }
 
     const successful = results.filter((r) => r.startsWith('✓')).length;
