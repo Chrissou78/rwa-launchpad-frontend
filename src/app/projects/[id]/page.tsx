@@ -11,6 +11,7 @@ import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import Header from '@/components/Header';
 import StripeInvestment from '@/components/invest/StripeInvestment';
 import { useKYC } from '@/contexts/KYCContext';
+import MilestoneManager from '@/components/project/MilestoneManager';
 
 // ============================================================================
 // CONSTANTS & CONFIG
@@ -726,6 +727,8 @@ function ProjectPageContent() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [pendingInvestment, setPendingInvestment] = useState<number>(0);
 
+  const isOwner = project?.owner.toLowerCase() === address?.toLowerCase();
+
   // NO useState for KYC - we derive from context instead
 
   // Handle payment redirect
@@ -1152,6 +1155,13 @@ function ProjectPageContent() {
                 project={project}
                 investorDetails={investorDetails}
                 onRefundSuccess={loadData}
+              />
+            )}
+            {project && (project.status === 3 || project.status === 4 || project.status === 5) && (
+              <MilestoneManager
+                projectId={Number(projectId)}
+                escrowVault={project.escrowVault}
+                isOwner={isOwner}
               />
             )}
           </div>

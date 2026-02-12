@@ -7,6 +7,7 @@ import { polygonAmoy } from 'viem/chains';
 import Header from '@/components/Header';
 import Link from 'next/link';
 import { CONTRACTS } from '@/config/contracts';
+import MilestoneAdmin from '@/components/admin/MilestoneAdmin';
 
 const PROJECT_NFT = CONTRACTS.RWAProjectNFT;
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -573,7 +574,7 @@ export default function AdminProjectsPage() {
                     <p className="text-gray-400 text-xs">Owner</p>
                     <p className="text-white font-mono text-sm break-all">{selectedProject.owner}</p>
                   </div>
-                  {selectedProject.securityToken !== ZERO_ADDRESS && (
+                   {selectedProject.securityToken !== ZERO_ADDRESS && (
                     <div className="bg-gray-700 rounded-lg p-3">
                       <p className="text-gray-400 text-xs">Security Token</p>
                       <a 
@@ -601,6 +602,20 @@ export default function AdminProjectsPage() {
                   )}
                 </div>
               </div>
+
+              {/* Milestone Management - Show for Funded/In Progress/Completed projects */}
+              {selectedProject.status >= 3 && selectedProject.escrowVault !== ZERO_ADDRESS && (
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-4">
+                    Milestone Management
+                  </h4>
+                  <MilestoneAdmin
+                    projectId={selectedProject.id}
+                    escrowVault={selectedProject.escrowVault}
+                    onUpdate={fetchProjects}
+                  />
+                </div>
+              )}
 
               {/* Result message */}
               {result && (
