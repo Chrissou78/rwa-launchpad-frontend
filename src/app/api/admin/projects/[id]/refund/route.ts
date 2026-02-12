@@ -35,12 +35,13 @@ const projectNftAbi = [
   },
 ] as const;
 
+// FIXED: enableRefunds takes projectId as argument
 const escrowAbi = [
   {
     name: 'enableRefunds',
     type: 'function',
     stateMutability: 'nonpayable',
-    inputs: [],
+    inputs: [{ name: '_projectId', type: 'uint256' }],
     outputs: [],
   },
 ] as const;
@@ -81,11 +82,12 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'No escrow vault for this project' }, { status: 400 });
     }
 
-    // Enable refunds
+    // FIXED: Pass projectId to enableRefunds
     const hash = await walletClient.writeContract({
       address: project.escrowVault as `0x${string}`,
       abi: escrowAbi,
       functionName: 'enableRefunds',
+      args: [BigInt(projectId)],
     });
 
     await publicClient.waitForTransactionReceipt({ hash });

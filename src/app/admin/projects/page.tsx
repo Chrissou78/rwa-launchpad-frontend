@@ -74,18 +74,31 @@ const projectNftAbi = [
 
 const escrowAbi = [
   {
-    name: 'refundsEnabled',
+    name: 'getProjectFunding',
     type: 'function',
     stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-  {
-    name: 'totalDeposited',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'projectId', type: 'uint256' },
+          { name: 'fundingGoal', type: 'uint256' },
+          { name: 'totalRaised', type: 'uint256' },
+          { name: 'totalReleased', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'paymentToken', type: 'address' },
+          { name: 'fundingComplete', type: 'bool' },
+          { name: 'refundsEnabled', type: 'bool' },
+          { name: 'currentMilestone', type: 'uint256' },
+          { name: 'minInvestment', type: 'uint256' },
+          { name: 'maxInvestment', type: 'uint256' },
+          { name: 'projectOwner', type: 'address' },
+          { name: 'securityToken', type: 'address' },
+        ],
+      },
+    ],
   },
 ] as const;
 
@@ -179,11 +192,13 @@ export default function AdminProjectsPage() {
         let refundsEnabled = false;
         if (data.escrowVault && data.escrowVault !== ZERO_ADDRESS) {
           try {
-            refundsEnabled = await client.readContract({
+            const funding = await client.readContract({
               address: data.escrowVault as `0x${string}`,
               abi: escrowAbi,
-              functionName: 'refundsEnabled',
-            }) as boolean;
+              functionName: 'getProjectFunding',
+              args: [BigInt(i)],
+            }) as any;
+            refundsEnabled = funding.refundsEnabled;
           } catch (e) {
             console.error('Error checking refunds for project', i, e);
           }
