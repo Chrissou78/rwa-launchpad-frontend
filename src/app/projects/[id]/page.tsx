@@ -92,21 +92,41 @@ const EscrowVaultABI = [
     stateMutability: 'view',
     inputs: [{ name: 'projectId', type: 'uint256' }],
     outputs: [
-      { name: 'totalDeposited', type: 'uint256' },
-      { name: 'fundingGoal', type: 'uint256' },
-      { name: 'isComplete', type: 'bool' },
-      { name: 'refundsEnabled', type: 'bool' },
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'projectId', type: 'uint256' },
+          { name: 'fundingGoal', type: 'uint256' },
+          { name: 'totalRaised', type: 'uint256' },
+          { name: 'totalReleased', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'paymentToken', type: 'address' },
+          { name: 'fundingComplete', type: 'bool' },
+          { name: 'refundsEnabled', type: 'bool' },
+          { name: 'currentMilestone', type: 'uint256' },
+          { name: 'minInvestment', type: 'uint256' },
+          { name: 'maxInvestment', type: 'uint256' },
+          { name: 'projectOwner', type: 'address' },
+          { name: 'securityToken', type: 'address' },
+        ],
+      },
     ],
   },
   {
-    name: 'getInvestorDeposit',
+    name: 'getInvestorDetails',
     type: 'function',
     stateMutability: 'view',
     inputs: [
       { name: 'projectId', type: 'uint256' },
       { name: 'investor', type: 'address' },
     ],
-    outputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'amountUSD', type: 'uint256' },
+      { name: 'tokensMinted', type: 'uint256' },
+      { name: 'refunded', type: 'bool' },
+    ],
   },
   {
     name: 'investWithToken',
@@ -127,7 +147,6 @@ const EscrowVaultABI = [
     outputs: [],
   },
 ] as const;
-
 const ERC20ABI = [
   {
     name: 'balanceOf',
@@ -785,7 +804,7 @@ function ProjectPageContent() {
 
       if (projectData.escrowVault && projectData.escrowVault !== ZERO_ADDRESS && address) {
         try {
-          const [fundingData, deposit] = await Promise.all([
+          const [fundingData, investorData] = await Promise.all([
             publicClient.readContract({
               address: projectData.escrowVault as Address,
               abi: EscrowVaultABI,
@@ -795,12 +814,30 @@ function ProjectPageContent() {
             publicClient.readContract({
               address: projectData.escrowVault as Address,
               abi: EscrowVaultABI,
-              functionName: 'getInvestorDeposit',
+              functionName: 'getInvestorDetails',  // Correct function name
               args: [BigInt(projectId), address],
             }),
           ]);
 
-          const [, , , refundsEnabled] = fundingData as [bigint, bigint, boolean, boolean];
+          // fundingData is now a struct object
+          const funding = fundingData as {
+            projectId: bigint;
+            fundingGoal: bigint;
+            totalRaised: bigint;
+            totalReleased: bigint;
+            deadline: bigint;
+            paymentToken: string;
+            fundingComplete: boolean;
+            refundsEnabled: boolean;
+            currentMilestone: bigint;
+            minInvestment: bigint;
+            maxInvestment: bigint;
+            projectOwner: string;
+            securityToken: string;
+          };
+
+          // investorData is 4 return values
+          const [amount, amountUSD, tokensMinted, refunded] = investorData as [bigint, bigint, bigint, boolean];
 
           let tokenBalance = 0n;
           if (projectData.securityToken && projectData.securityToken !== ZERO_ADDRESS) {
@@ -817,8 +854,8 @@ function ProjectPageContent() {
           }
 
           setInvestorDetails({
-            deposit: deposit as bigint,
-            refundsEnabled,
+            deposit: amountUSD,  // Use amountUSD (6 decimals) for display
+            refundsEnabled: funding.refundsEnabled,
             tokenBalance,
           });
         } catch (e) {
