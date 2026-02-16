@@ -534,7 +534,7 @@ export default function LandingPage() {
               href="/contact"
               className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition"
             >
-              Schedule a Consultation <ArrowRight className="ml-2 w-5 h-5" />
+              Let's talk <ArrowRight className="ml-2 w-5 h-5" />
             </Link>
           </div>
         </div>
