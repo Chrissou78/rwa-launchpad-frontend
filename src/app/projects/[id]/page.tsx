@@ -12,6 +12,14 @@ import Header from '@/components/Header';
 import StripeInvestment from '@/components/invest/StripeInvestment';
 import { useKYC } from '@/contexts/KYCContext';
 import MilestoneManager from '@/components/project/MilestoneManager';
+import { 
+  RWAProjectNFTABI, 
+  RWALaunchpadFactoryABI, 
+  RWAEscrowVaultABI, 
+  RWASecurityTokenABI, 
+  IdentityRegistryABI, 
+  ERC20ABI 
+} from '@/config/abis';
 
 // ============================================================================
 // CONSTANTS & CONFIG
@@ -19,7 +27,7 @@ import MilestoneManager from '@/components/project/MilestoneManager';
 
 const publicClient = createPublicClient({
   chain: polygonAmoy,
-  transport: http('https://rpc-amoy.polygon.technology'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
 });
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -52,210 +60,6 @@ const STATUS_COLORS: Record<number, string> = {
 };
 
 // ============================================================================
-// ABIs
-// ============================================================================
-
-const RWAProjectNFTABI = [
-  {
-    name: 'getProject',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: 'project',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-] as const;
-
-const EscrowVaultABI = [
-  {
-    name: 'getProjectFunding',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'projectId', type: 'uint256' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'totalReleased', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'paymentToken', type: 'address' },
-          { name: 'fundingComplete', type: 'bool' },
-          { name: 'refundsEnabled', type: 'bool' },
-          { name: 'currentMilestone', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'projectOwner', type: 'address' },
-          { name: 'securityToken', type: 'address' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'getInvestorDetails',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'investor', type: 'address' },
-    ],
-    outputs: [
-      { name: 'amount', type: 'uint256' },
-      { name: 'amountUSD', type: 'uint256' },
-      { name: 'tokensMinted', type: 'uint256' },
-      { name: 'refunded', type: 'bool' },
-    ],
-  },
-  {
-    name: 'investWithToken',
-    type: 'function',
-    stateMutability: 'payable', // Changed to payable for transaction fee
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'claimRefund',
-    type: 'function',
-    stateMutability: 'payable', // Changed to payable for transaction fee
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    name: 'transactionFee',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-] as const;
-
-const ERC20ABI = [
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'allowance',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-  {
-    name: 'decimals',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint8' }],
-  },
-  {
-    name: 'symbol',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }],
-  },
-  {
-    name: 'name',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }],
-  },
-] as const;
-
-const RWASecurityTokenABI = [
-  {
-    name: 'name',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }],
-  },
-  {
-    name: 'symbol',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }],
-  },
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'totalSupply',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'identityRegistry',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'address' }],
-  },
-] as const;
-
-const IdentityRegistryABI = [
-  {
-    name: 'isVerified',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'userAddress', type: 'address' }],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-] as const;
-
-// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -274,6 +78,19 @@ interface Project {
   createdAt: bigint;
   completedAt: bigint;
   transferable: boolean;
+}
+
+interface DeploymentRecord {
+  projectId: bigint;
+  securityToken: string;
+  escrowVault: string;
+  compliance: string;
+  dividendDistributor: string;
+  maxBalanceModule: string;
+  lockupModule: string;
+  deployer: string;
+  deployedAt: bigint;
+  active: boolean;
 }
 
 interface ProjectMetadata {
@@ -298,9 +115,12 @@ interface ProjectMetadata {
 }
 
 interface InvestorDetails {
-  deposit: bigint;
-  refundsEnabled: boolean;
+  contribution: bigint;
   tokenBalance: bigint;
+  tokensClaimed: bigint;
+  claimableTokens: bigint;
+  refundsEnabled: boolean;
+  actualTokenBalance: bigint;
 }
 
 // ============================================================================
@@ -346,6 +166,176 @@ function isValidIPFSHash(uri: string): boolean {
     return hash.length >= 46;
   }
   return uri.startsWith('http');
+}
+
+function truncateAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+// ============================================================================
+// CONTRACT INFO BUBBLE COMPONENT
+// ============================================================================
+
+interface ContractInfoBubbleProps {
+  deployment: DeploymentRecord | null;
+  project: Project;
+  loading: boolean;
+}
+
+function ContractInfoBubble({ deployment, project, loading }: ContractInfoBubbleProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const contracts = [
+    { label: 'Project NFT', address: CONTRACTS.RWAProjectNFT, type: 'global' },
+    { label: 'Security Token', address: project.securityToken, type: 'project' },
+    { label: 'Escrow Vault', address: project.escrowVault, type: 'project' },
+    { label: 'Compliance', address: deployment?.compliance, type: 'project' },
+    { label: 'Dividend Distributor', address: deployment?.dividendDistributor, type: 'project' },
+    { label: 'Max Balance Module', address: deployment?.maxBalanceModule, type: 'module' },
+    { label: 'Lockup Module', address: deployment?.lockupModule, type: 'module' },
+    { label: 'Identity Registry', address: CONTRACTS.IdentityRegistry, type: 'global' },
+  ];
+
+  const visibleContracts = expanded ? contracts : contracts.slice(0, 4);
+  const hiddenCount = contracts.length - 4;
+
+  return (
+    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-slate-700 bg-gradient-to-r from-blue-500/10 to-purple-500/10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+            <span className="text-xl">📜</span>
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Smart Contracts</h2>
+            <p className="text-slate-400 text-sm">Deployed contract addresses for this project</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Contract List */}
+      <div className="p-4">
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full" />
+            <span className="ml-3 text-slate-400">Loading contracts...</span>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {visibleContracts.map((contract, index) => {
+              const isValid = contract.address && contract.address !== ZERO_ADDRESS;
+              const typeColor = 
+                contract.type === 'global' ? 'bg-slate-600' :
+                contract.type === 'module' ? 'bg-purple-500/30 text-purple-300' :
+                'bg-blue-500/30 text-blue-300';
+
+              return (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColor}`}>
+                      {contract.type === 'global' ? 'Global' : contract.type === 'module' ? 'Module' : 'Project'}
+                    </span>
+                    <span className="text-slate-300 font-medium">{contract.label}</span>
+                  </div>
+                  
+                  {isValid ? (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`${EXPLORER_URL}/address/${contract.address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:text-blue-300 text-sm font-mono transition"
+                      >
+                        {truncateAddress(contract.address!)}
+                      </a>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(contract.address!)}
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-600 rounded transition"
+                        title="Copy address"
+                      >
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                      <a
+                        href={`${EXPLORER_URL}/address/${contract.address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-600 rounded transition"
+                        title="View on explorer"
+                      >
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500 text-sm italic">Not deployed</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Expand/Collapse Button */}
+        {!loading && hiddenCount > 0 && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full mt-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition flex items-center justify-center gap-2"
+          >
+            {expanded ? (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+                Show less
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                Show {hiddenCount} more contracts
+              </>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Footer with deployment info */}
+      {deployment && deployment.deployedAt > 0n && (
+        <div className="px-6 py-3 border-t border-slate-700 bg-slate-800/50">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>
+              Deployed by{' '}
+              <a
+                href={`${EXPLORER_URL}/address/${deployment.deployer}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300"
+              >
+                {truncateAddress(deployment.deployer)}
+              </a>
+            </span>
+            <span>
+              {new Date(Number(deployment.deployedAt) * 1000).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ============================================================================
@@ -416,13 +406,11 @@ function InvestModal({
   const { isSuccess: approveSuccess } = useWaitForTransactionReceipt({ hash: approveHash });
   const { isSuccess: investSuccess } = useWaitForTransactionReceipt({ hash: investHash });
 
-  // Load balances and allowance
   useEffect(() => {
     if (!address || !project.escrowVault) return;
 
     const loadBalances = async () => {
       try {
-        console.log('Loading balances for escrow:', project.escrowVault);
         const [bal, allow] = await Promise.all([
           publicClient.readContract({
             address: token.address,
@@ -437,7 +425,6 @@ function InvestModal({
             args: [address, project.escrowVault as Address],
           }),
         ]);
-        console.log('Balance:', bal, 'Allowance:', allow);
         setBalance(bal as bigint);
         setAllowance(allow as bigint);
       } catch (err) {
@@ -448,19 +435,16 @@ function InvestModal({
     loadBalances();
   }, [address, selectedToken, token.address, project.escrowVault]);
 
-  // Re-fetch allowance after approval succeeds
   useEffect(() => {
     if (approveSuccess && address && project.escrowVault) {
       const refetchAllowance = async () => {
         try {
-          console.log('Refetching allowance after approval...');
           const newAllowance = await publicClient.readContract({
             address: token.address,
             abi: ERC20ABI,
             functionName: 'allowance',
             args: [address, project.escrowVault as Address],
           });
-          console.log('New allowance after approval:', newAllowance);
           setAllowance(newAllowance as bigint);
           setStep('invest');
         } catch (err) {
@@ -473,7 +457,6 @@ function InvestModal({
     }
   }, [approveSuccess, address, token.address, project.escrowVault, amountInWei]);
 
-  // Handle successful investment
   useEffect(() => {
     if (investSuccess) {
       onSuccess();
@@ -481,7 +464,6 @@ function InvestModal({
   }, [investSuccess, onSuccess]);
 
   const handleApprove = () => {
-    console.log('Approving', amountInWei.toString(), 'to escrow:', project.escrowVault);
     setStep('approve');
     approve({
       address: token.address,
@@ -492,20 +474,12 @@ function InvestModal({
   };
 
   const handleInvest = () => {
-    console.log('Investing with params:', {
-      escrowVault: project.escrowVault,
-      projectId: project.id.toString(),
-      tokenAddress: token.address,
-      amountInWei: amountInWei.toString(),
-      transactionFee: transactionFee.toString(),
-    });
-    
     invest({
       address: project.escrowVault as Address,
-      abi: EscrowVaultABI,
-      functionName: 'investWithToken',
-      args: [project.id, token.address, amountInWei],
-      value: transactionFee, // Include transaction fee as msg.value
+      abi: RWAEscrowVaultABI,
+      functionName: 'invest',
+      args: [project.id, amountInWei, token.address],
+      value: 0n,
     });
   };
 
@@ -526,9 +500,7 @@ function InvestModal({
       <div className="bg-slate-800 rounded-2xl max-w-md w-full p-6 border border-slate-700">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold text-white">Invest in {projectName}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
         <div className="mb-4">
@@ -593,7 +565,6 @@ function InvestModal({
           </div>
         </div>
 
-        {/* Transaction Fee Notice */}
         {transactionFee > 0n && (
           <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
             <div className="flex items-center justify-between">
@@ -603,9 +574,6 @@ function InvestModal({
               </div>
               <span className="text-purple-400 font-medium">{feeInPOL} POL</span>
             </div>
-            <p className="text-slate-400 text-xs mt-1">
-              This fee is required to process your investment on the blockchain.
-            </p>
           </div>
         )}
 
@@ -703,14 +671,14 @@ function RefundSection({ project, investorDetails, onRefundSuccess, transactionF
   const handleRefund = () => {
     claimRefund({
       address: project.escrowVault as Address,
-      abi: EscrowVaultABI,
+      abi: RWAEscrowVaultABI,
       functionName: 'claimRefund',
       args: [project.id],
-      value: transactionFee, // Include transaction fee
+      value: transactionFee,
     });
   };
 
-  if (!investorDetails.refundsEnabled || investorDetails.deposit === 0n) {
+  if (!investorDetails.refundsEnabled || investorDetails.contribution === 0n) {
     return null;
   }
 
@@ -723,13 +691,11 @@ function RefundSection({ project, investorDetails, onRefundSuccess, transactionF
         This project has been cancelled. You can claim a refund of your investment.
       </p>
       {transactionFee > 0n && (
-        <p className="text-slate-400 text-sm mb-4">
-          Transaction fee: {feeInPOL} POL
-        </p>
+        <p className="text-slate-400 text-sm mb-4">Transaction fee: {feeInPOL} POL</p>
       )}
       <div className="flex items-center justify-between">
         <span className="text-white font-semibold">
-          Your Deposit: {formatUSDC(investorDetails.deposit)}
+          Your Deposit: {formatUSDC(investorDetails.contribution)}
         </span>
         <button
           onClick={handleRefund}
@@ -739,6 +705,93 @@ function RefundSection({ project, investorDetails, onRefundSuccess, transactionF
           {refundPending ? 'Processing...' : `Claim Refund${transactionFee > 0n ? ` (+ ${feeInPOL} POL)` : ''}`}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CLAIM TOKENS SECTION COMPONENT
+// ============================================================================
+
+interface ClaimTokensSectionProps {
+  project: Project;
+  investorDetails: InvestorDetails;
+  claimFeeBps: number;
+  transactionFee: bigint;
+  onClaimSuccess: () => void;
+}
+
+function ClaimTokensSection({ project, investorDetails, claimFeeBps, transactionFee, onClaimSuccess }: ClaimTokensSectionProps) {
+  const { writeContract: claimTokens, data: claimHash } = useWriteContract();
+  const { isSuccess: claimSuccess, isLoading: claimPending } = useWaitForTransactionReceipt({
+    hash: claimHash,
+  });
+
+  useEffect(() => {
+    if (claimSuccess) {
+      onClaimSuccess();
+    }
+  }, [claimSuccess, onClaimSuccess]);
+
+  const handleClaim = () => {
+    claimTokens({
+      address: project.escrowVault as Address,
+      abi: RWAEscrowVaultABI,
+      functionName: 'claimTokens',
+      args: [project.id],
+      value: transactionFee,
+    });
+  };
+
+  if (investorDetails.claimableTokens === 0n) {
+    return null;
+  }
+
+  const claimableFormatted = formatUnits(investorDetails.claimableTokens, 18);
+  const feeAmount = (Number(investorDetails.claimableTokens) * claimFeeBps) / 10000;
+  const netTokens = Number(investorDetails.claimableTokens) - feeAmount;
+  const netFormatted = formatUnits(BigInt(Math.floor(netTokens)), 18);
+  const feeInPOL = formatEther(transactionFee);
+
+  return (
+    <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6 mb-6">
+      <h3 className="text-lg font-semibold text-green-400 mb-2">Tokens Available to Claim</h3>
+      <p className="text-slate-300 mb-4">
+        Milestone funds have been released. You can now claim your tokens.
+      </p>
+      
+      <div className="bg-slate-800/50 rounded-lg p-4 mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-slate-400">Claimable Tokens</span>
+          <span className="text-white font-semibold">{claimableFormatted}</span>
+        </div>
+        {claimFeeBps > 0 && (
+          <>
+            <div className="flex justify-between items-center mb-2 text-sm">
+              <span className="text-slate-400">Platform Fee ({claimFeeBps / 100}%)</span>
+              <span className="text-red-400">-{formatUnits(BigInt(Math.floor(feeAmount)), 18)}</span>
+            </div>
+            <div className="border-t border-slate-700 pt-2 mt-2">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-300 font-medium">You Receive</span>
+                <span className="text-green-400 font-bold">{netFormatted} tokens</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {transactionFee > 0n && (
+        <p className="text-slate-400 text-sm mb-4">Transaction fee: {feeInPOL} POL</p>
+      )}
+
+      <button
+        onClick={handleClaim}
+        disabled={claimPending}
+        className="w-full py-3 bg-green-600 hover:bg-green-500 disabled:bg-slate-600 rounded-lg text-white font-semibold transition"
+      >
+        {claimPending ? 'Claiming...' : `Claim Tokens${transactionFee > 0n ? ` (+ ${feeInPOL} POL)` : ''}`}
+      </button>
     </div>
   );
 }
@@ -756,6 +809,8 @@ function ProjectPageContent() {
   const { kycData, tierInfo } = useKYC();
 
   const [project, setProject] = useState<Project | null>(null);
+  const [deployment, setDeployment] = useState<DeploymentRecord | null>(null);
+  const [deploymentLoading, setDeploymentLoading] = useState(true);
   const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
   const [tokenInfo, setTokenInfo] = useState<{ name: string; symbol: string } | null>(null);
   const [investorDetails, setInvestorDetails] = useState<InvestorDetails | null>(null);
@@ -766,10 +821,10 @@ function ProjectPageContent() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [pendingInvestment, setPendingInvestment] = useState<number>(0);
   const [transactionFee, setTransactionFee] = useState<bigint>(0n);
+  const [claimFeeBps, setClaimFeeBps] = useState<number>(0);
 
   const isOwner = project?.owner.toLowerCase() === address?.toLowerCase();
 
-  // Handle payment redirect
   useEffect(() => {
     const payment = searchParams.get('payment');
     if (payment === 'success') {
@@ -779,8 +834,28 @@ function ProjectPageContent() {
     }
   }, [searchParams, projectId]);
 
+  const loadDeployment = async () => {
+    if (!projectId || !CONTRACTS.RWALaunchpadFactory) return;
+    
+    setDeploymentLoading(true);
+    try {
+      const deploymentData = await publicClient.readContract({
+        address: CONTRACTS.RWALaunchpadFactory as Address,
+        abi: RWALaunchpadFactoryABI,
+        functionName: 'getDeployment',
+        args: [BigInt(projectId)],
+      });
+      setDeployment(deploymentData as DeploymentRecord);
+    } catch (err) {
+      console.error('Failed to load deployment record:', err);
+      setDeployment(null);
+    } finally {
+      setDeploymentLoading(false);
+    }
+  };
+
   const loadData = async () => {
-    if (!projectId) return;
+    if (!projectId || !CONTRACTS.RWAProjectNFT) return;
 
     try {
       setLoading(true);
@@ -798,16 +873,14 @@ function ProjectPageContent() {
 
       const isCancelledOrFailed = projectData.status === 6 || projectData.status === 7;
 
-      // Load transaction fee from escrow vault
       if (projectData.escrowVault && projectData.escrowVault !== ZERO_ADDRESS) {
         try {
           const fee = await publicClient.readContract({
             address: projectData.escrowVault as Address,
-            abi: EscrowVaultABI,
+            abi: RWAEscrowVaultABI,
             functionName: 'transactionFee',
           });
           setTransactionFee(fee as bigint);
-          console.log('Transaction fee:', formatEther(fee as bigint), 'POL');
         } catch (e) {
           console.error('Failed to load transaction fee:', e);
           setTransactionFee(0n);
@@ -820,10 +893,8 @@ function ProjectPageContent() {
           if (metadataUrl) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
-
             const response = await fetch(metadataUrl, { signal: controller.signal });
             clearTimeout(timeoutId);
-
             if (response.ok) {
               const data = await response.json();
               setMetadata(data);
@@ -834,11 +905,7 @@ function ProjectPageContent() {
         }
       }
 
-      if (
-        !isCancelledOrFailed &&
-        projectData.securityToken &&
-        projectData.securityToken !== ZERO_ADDRESS
-      ) {
+      if (!isCancelledOrFailed && projectData.securityToken && projectData.securityToken !== ZERO_ADDRESS) {
         try {
           const [name, symbol] = await Promise.all([
             publicClient.readContract({
@@ -860,43 +927,42 @@ function ProjectPageContent() {
 
       if (projectData.escrowVault && projectData.escrowVault !== ZERO_ADDRESS && address) {
         try {
-          const [fundingData, investorData] = await Promise.all([
+          const [contribution, tokenBalance, tokensClaimed, claimableTokens, claimFee] = await Promise.all([
             publicClient.readContract({
               address: projectData.escrowVault as Address,
-              abi: EscrowVaultABI,
-              functionName: 'getProjectFunding',
-              args: [BigInt(projectId)],
+              abi: RWAEscrowVaultABI,
+              functionName: 'getInvestorContribution',
+              args: [BigInt(projectId), address],
             }),
             publicClient.readContract({
               address: projectData.escrowVault as Address,
-              abi: EscrowVaultABI,
-              functionName: 'getInvestorDetails',
+              abi: RWAEscrowVaultABI,
+              functionName: 'investorTokenBalance',
               args: [BigInt(projectId), address],
+            }),
+            publicClient.readContract({
+              address: projectData.escrowVault as Address,
+              abi: RWAEscrowVaultABI,
+              functionName: 'tokensClaimed',
+              args: [BigInt(projectId), address],
+            }),
+            publicClient.readContract({
+              address: projectData.escrowVault as Address,
+              abi: RWAEscrowVaultABI,
+              functionName: 'getClaimableTokens',
+              args: [BigInt(projectId), address],
+            }),
+            publicClient.readContract({
+              address: projectData.escrowVault as Address,
+              abi: RWAEscrowVaultABI,
+              functionName: 'claimFeeBps',
             }),
           ]);
 
-          const funding = fundingData as {
-            projectId: bigint;
-            fundingGoal: bigint;
-            totalRaised: bigint;
-            totalReleased: bigint;
-            deadline: bigint;
-            paymentToken: string;
-            fundingComplete: boolean;
-            refundsEnabled: boolean;
-            currentMilestone: bigint;
-            minInvestment: bigint;
-            maxInvestment: bigint;
-            projectOwner: string;
-            securityToken: string;
-          };
-
-          const [amount, amountUSD, tokensMinted, refunded] = investorData as [bigint, bigint, bigint, boolean];
-
-          let tokenBalance = 0n;
+          let actualTokenBalance = 0n;
           if (projectData.securityToken && projectData.securityToken !== ZERO_ADDRESS) {
             try {
-              tokenBalance = (await publicClient.readContract({
+              actualTokenBalance = (await publicClient.readContract({
                 address: projectData.securityToken as Address,
                 abi: RWASecurityTokenABI,
                 functionName: 'balanceOf',
@@ -907,13 +973,20 @@ function ProjectPageContent() {
             }
           }
 
+          const refundsEnabled = projectData.status === 6;
+
           setInvestorDetails({
-            deposit: amountUSD,
-            refundsEnabled: funding.refundsEnabled,
-            tokenBalance,
+            contribution: contribution as bigint,
+            tokenBalance: tokenBalance as bigint,
+            tokensClaimed: tokensClaimed as bigint,
+            claimableTokens: claimableTokens as bigint,
+            refundsEnabled,
+            actualTokenBalance,
           });
+          
+          setClaimFeeBps(Number(claimFee));
         } catch (e) {
-          // Silent fail
+          console.error('Failed to load investor details:', e);
         }
       }
     } catch (err) {
@@ -926,6 +999,7 @@ function ProjectPageContent() {
 
   useEffect(() => {
     loadData();
+    loadDeployment();
   }, [projectId, address]);
 
   useEffect(() => {
@@ -996,7 +1070,6 @@ function ProjectPageContent() {
     <div className="min-h-screen bg-slate-900">
       <Header />
 
-      {/* Payment Success Banner */}
       {paymentSuccess && (
         <div className="bg-green-500/20 border-b border-green-500/30">
           <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-3">
@@ -1007,12 +1080,7 @@ function ProjectPageContent() {
                 Your investment is being processed. Tokens will be minted once the payment is confirmed.
               </p>
             </div>
-            <button
-              onClick={() => setPaymentSuccess(false)}
-              className="text-green-400 hover:text-green-300"
-            >
-              ✕
-            </button>
+            <button onClick={() => setPaymentSuccess(false)} className="text-green-400 hover:text-green-300">✕</button>
           </div>
         </div>
       )}
@@ -1020,10 +1088,7 @@ function ProjectPageContent() {
       {/* Hero Section */}
       <div className="relative">
         {imageUrl ? (
-          <div
-            className="h-64 md:h-80 bg-cover bg-center"
-            style={{ backgroundImage: `url(${imageUrl})` }}
-          >
+          <div className="h-64 md:h-80 bg-cover bg-center" style={{ backgroundImage: `url(${imageUrl})` }}>
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent" />
           </div>
         ) : (
@@ -1035,22 +1100,14 @@ function ProjectPageContent() {
         <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-wrap items-center gap-3 mb-3">
-              <span
-                className={`px-4 py-2 rounded-full text-sm font-medium border ${
-                  STATUS_COLORS[project.status] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                }`}
-              >
+              <span className={`px-4 py-2 rounded-full text-sm font-medium border ${STATUS_COLORS[project.status] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
                 {STATUS_LABELS[project.status] || 'Unknown'}
               </span>
               {tokenInfo && (
-                <span className="px-3 py-1 bg-slate-700/80 rounded-full text-sm text-slate-300">
-                  ${tokenInfo.symbol}
-                </span>
+                <span className="px-3 py-1 bg-slate-700/80 rounded-full text-sm text-slate-300">${tokenInfo.symbol}</span>
               )}
               {metadata?.properties?.category && (
-                <span className="px-3 py-1 bg-slate-700/80 rounded-full text-sm text-slate-300">
-                  {metadata.properties.category}
-                </span>
+                <span className="px-3 py-1 bg-slate-700/80 rounded-full text-sm text-slate-300">{metadata.properties.category}</span>
               )}
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-white">{projectName}</h1>
@@ -1058,11 +1115,8 @@ function ProjectPageContent() {
         </div>
       </div>
 
-      {/* Cancelled/Failed Banner */}
       {(isCancelled || isFailed) && (
-        <div
-          className={`${isCancelled ? 'bg-red-500/20 border-red-500/30' : 'bg-orange-500/20 border-orange-500/30'} border-y`}
-        >
+        <div className={`${isCancelled ? 'bg-red-500/20 border-red-500/30' : 'bg-orange-500/20 border-orange-500/30'} border-y`}>
           <div className="max-w-6xl mx-auto px-6 py-4">
             <p className={`${isCancelled ? 'text-red-400' : 'text-orange-400'} font-semibold`}>
               {isCancelled
@@ -1097,26 +1151,19 @@ function ProjectPageContent() {
                 {metadata?.properties?.projectedROI && (
                   <div className="bg-slate-700/50 rounded-lg p-4">
                     <p className="text-slate-400 text-sm">Projected ROI</p>
-                    <p className="text-green-400 text-lg font-semibold">
-                      {metadata.properties.projectedROI}%
-                    </p>
+                    <p className="text-green-400 text-lg font-semibold">{metadata.properties.projectedROI}%</p>
                   </div>
                 )}
                 {metadata?.properties?.roiTimelineMonths && (
                   <div className="bg-slate-700/50 rounded-lg p-4">
                     <p className="text-slate-400 text-sm">ROI Timeline</p>
-                    <p className="text-white text-lg font-semibold">
-                      {metadata.properties.roiTimelineMonths} months
-                    </p>
+                    <p className="text-white text-lg font-semibold">{metadata.properties.roiTimelineMonths} months</p>
                   </div>
                 )}
-                {/* Transaction Fee Info */}
                 {transactionFee > 0n && (
                   <div className="bg-slate-700/50 rounded-lg p-4">
                     <p className="text-slate-400 text-sm">Transaction Fee</p>
-                    <p className="text-purple-400 text-lg font-semibold">
-                      {formatEther(transactionFee)} POL
-                    </p>
+                    <p className="text-purple-400 text-lg font-semibold">{formatEther(transactionFee)} POL</p>
                   </div>
                 )}
               </div>
@@ -1159,48 +1206,12 @@ function ProjectPageContent() {
               </div>
             )}
 
-            <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-              <h2 className="text-xl font-semibold text-white mb-4">Smart Contracts</h2>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Project NFT</span>
-                  <a
-                    href={`${EXPLORER_URL}/address/${CONTRACTS.RWAProjectNFT}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300 text-sm font-mono"
-                  >
-                    {CONTRACTS.RWAProjectNFT.slice(0, 8)}...{CONTRACTS.RWAProjectNFT.slice(-6)}
-                  </a>
-                </div>
-                {project.securityToken && project.securityToken !== ZERO_ADDRESS && (
-                  <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                    <span className="text-slate-400">Security Token</span>
-                    <a
-                      href={`${EXPLORER_URL}/address/${project.securityToken}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 text-sm font-mono"
-                    >
-                      {project.securityToken.slice(0, 8)}...{project.securityToken.slice(-6)}
-                    </a>
-                  </div>
-                )}
-                {project.escrowVault && project.escrowVault !== ZERO_ADDRESS && (
-                  <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                    <span className="text-slate-400">Escrow Vault</span>
-                    <a
-                      href={`${EXPLORER_URL}/address/${project.escrowVault}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 text-sm font-mono"
-                    >
-                      {project.escrowVault.slice(0, 8)}...{project.escrowVault.slice(-6)}
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Smart Contracts Info Bubble */}
+            <ContractInfoBubble 
+              deployment={deployment} 
+              project={project} 
+              loading={deploymentLoading} 
+            />
 
             {investorDetails && (
               <RefundSection
@@ -1210,11 +1221,22 @@ function ProjectPageContent() {
                 transactionFee={transactionFee}
               />
             )}
+
             {project && (project.status === 3 || project.status === 4 || project.status === 5) && (
               <MilestoneManager
                 projectId={Number(projectId)}
                 escrowVault={project.escrowVault}
                 isOwner={isOwner}
+              />
+            )}
+
+            {investorDetails && investorDetails.claimableTokens > 0n && (
+              <ClaimTokensSection
+                project={project}
+                investorDetails={investorDetails}
+                claimFeeBps={claimFeeBps}
+                transactionFee={transactionFee}
+                onClaimSuccess={loadData}
               />
             )}
           </div>
@@ -1268,26 +1290,38 @@ function ProjectPageContent() {
                 )}
               </div>
 
-              {investorDetails && investorDetails.deposit > 0n && (
+              {investorDetails && investorDetails.contribution > 0n && (
                 <div className="mb-6 pb-6 border-b border-slate-700">
                   <p className="text-slate-400 text-sm mb-2">Your Investment</p>
-                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                    <p className="text-blue-400 text-xl font-bold">
-                      {formatUSDC(investorDetails.deposit)}
-                    </p>
-                    {investorDetails.tokenBalance > 0n && (
-                      <p className="text-slate-400 text-sm mt-1">
-                        {formatUnits(investorDetails.tokenBalance, 18)} tokens
-                      </p>
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Contributed</span>
+                      <span className="text-blue-400 text-lg font-bold">{formatUSDC(investorDetails.contribution)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Tokens Entitled</span>
+                      <span className="text-white">{formatUnits(investorDetails.tokenBalance, 18)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Tokens Claimed</span>
+                      <span className="text-green-400">{formatUnits(investorDetails.tokensClaimed, 18)}</span>
+                    </div>
+                    {investorDetails.claimableTokens > 0n && (
+                      <div className="flex justify-between pt-2 border-t border-blue-500/30">
+                        <span className="text-green-400 font-medium">Available to Claim</span>
+                        <span className="text-green-400 font-bold">{formatUnits(investorDetails.claimableTokens, 18)}</span>
+                      </div>
                     )}
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">On-chain Balance</span>
+                      <span className="text-purple-400">{formatUnits(investorDetails.actualTokenBalance, 18)}</span>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* KYC Warning */}
               {showKYCWarning && <KYCWarning />}
 
-              {/* KYC Limit Info */}
               {isKYCVerified && isConnected && (
                 <div className="mb-4 p-3 bg-slate-700/50 rounded-lg">
                   <div className="flex items-center justify-between text-sm">
@@ -1305,7 +1339,6 @@ function ProjectPageContent() {
                 </div>
               )}
 
-              {/* Transaction Fee Notice */}
               {transactionFee > 0n && canInvest && isConnected && (
                 <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
                   <div className="flex items-center gap-2 text-sm">
@@ -1440,9 +1473,7 @@ function ProjectPageContent() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Created</span>
-                  <span className="text-white">
-                    {new Date(Number(project.createdAt) * 1000).toLocaleDateString()}
-                  </span>
+                  <span className="text-white">{new Date(Number(project.createdAt) * 1000).toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Owner</span>

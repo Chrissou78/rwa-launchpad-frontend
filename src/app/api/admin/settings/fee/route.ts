@@ -4,89 +4,7 @@ import { createWalletClient, createPublicClient, http, parseEther, formatEther }
 import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
-
-const projectNftAbi = [
-  {
-    name: 'getProject',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'totalProjects',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-] as const;
-
-const escrowAbi = [
-  {
-    name: 'transactionFee',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'collectedTransactionFees',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'feeRecipient',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'address' }],
-  },
-  {
-    name: 'setTransactionFee',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: '_fee', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    name: 'setFeeRecipient',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: '_newRecipient', type: 'address' }],
-    outputs: [],
-  },
-  {
-    name: 'withdrawTransactionFees',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [],
-    outputs: [],
-  },
-] as const;
+import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -95,7 +13,7 @@ async function getAllEscrowVaults(publicClient: ReturnType<typeof createPublicCl
   try {
     const total = await publicClient.readContract({
       address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-      abi: projectNftAbi,
+      abi: RWAProjectNFTABI,
       functionName: 'totalProjects',
     });
 
@@ -107,7 +25,7 @@ async function getAllEscrowVaults(publicClient: ReturnType<typeof createPublicCl
       try {
         const project = await publicClient.readContract({
           address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-          abi: projectNftAbi,
+          abi: RWAProjectNFTABI,
           functionName: 'getProject',
           args: [BigInt(i)],
         });
@@ -163,17 +81,17 @@ export async function GET() {
           const [transactionFee, collectedFees, feeRecipient] = await Promise.all([
             publicClient.readContract({
               address: vault as `0x${string}`,
-              abi: escrowAbi,
+              abi: RWAEscrowVaultABI,
               functionName: 'transactionFee',
             }),
             publicClient.readContract({
               address: vault as `0x${string}`,
-              abi: escrowAbi,
+              abi: RWAEscrowVaultABI,
               functionName: 'collectedTransactionFees',
             }),
             publicClient.readContract({
               address: vault as `0x${string}`,
-              abi: escrowAbi,
+              abi: RWAEscrowVaultABI,
               functionName: 'feeRecipient',
             }),
           ]);
@@ -273,7 +191,7 @@ export async function POST(request: NextRequest) {
           try {
             const hash = await walletClient.writeContract({
               address: vault as `0x${string}`,
-              abi: escrowAbi,
+              abi: RWAEscrowVaultABI,
               functionName: 'setTransactionFee',
               args: [feeInWei],
             });
@@ -298,7 +216,7 @@ export async function POST(request: NextRequest) {
           try {
             const hash = await walletClient.writeContract({
               address: vault as `0x${string}`,
-              abi: escrowAbi,
+              abi: RWAEscrowVaultABI,
               functionName: 'setFeeRecipient',
               args: [value as `0x${string}`],
             });
@@ -319,14 +237,14 @@ export async function POST(request: NextRequest) {
           try {
             const collectedFees = await publicClient.readContract({
               address: vault as `0x${string}`,
-              abi: escrowAbi,
+              abi: RWAEscrowVaultABI,
               functionName: 'collectedTransactionFees',
             }) as bigint;
 
             if (collectedFees > 0n) {
               const hash = await walletClient.writeContract({
                 address: vault as `0x${string}`,
-                abi: escrowAbi,
+                abi: RWAEscrowVaultABI,
                 functionName: 'withdrawTransactionFees',
               });
               await publicClient.waitForTransactionReceipt({ hash });

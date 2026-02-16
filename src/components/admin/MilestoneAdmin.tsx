@@ -1,72 +1,16 @@
+// src/components/admin/MilestoneAdmin.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, Address } from 'viem';
 import { polygonAmoy } from 'viem/chains';
+import { RWAEscrowVaultABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
   chain: polygonAmoy,
-  transport: http('https://rpc-amoy.polygon.technology'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
 });
-
-const EscrowVaultABI = [
-  {
-    name: 'approveMilestone',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_milestoneIndex', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'rejectMilestone',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_milestoneIndex', type: 'uint256' },
-      { name: '_reason', type: 'string' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'releaseMilestoneFunds',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_milestoneIndex', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'getMilestones',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple[]',
-        components: [
-          { name: 'description', type: 'string' },
-          { name: 'percentage', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'proofURI', type: 'string' },
-          { name: 'submittedAt', type: 'uint256' },
-          { name: 'approvedAt', type: 'uint256' },
-          { name: 'releasedAmount', type: 'uint256' },
-          { name: 'rejectionReason', type: 'string' },
-          { name: 'disputeRaiser', type: 'address' },
-          { name: 'disputeReason', type: 'string' },
-        ],
-      },
-    ],
-  },
-] as const;
 
 const MILESTONE_STATUS: Record<number, { label: string; color: string }> = {
   0: { label: 'Pending', color: 'bg-gray-500/20 text-gray-400' },
@@ -116,7 +60,7 @@ export default function MilestoneAdmin({ projectId, escrowVault, onUpdate }: Mil
       setLoading(true);
       const data = await publicClient.readContract({
         address: escrowVault as Address,
-        abi: EscrowVaultABI,
+        abi: RWAEscrowVaultABI,
         functionName: 'getMilestones',
         args: [BigInt(projectId)],
       });
@@ -146,7 +90,7 @@ export default function MilestoneAdmin({ projectId, escrowVault, onUpdate }: Mil
   const handleApprove = (index: number) => {
     approve({
       address: escrowVault as Address,
-      abi: EscrowVaultABI,
+      abi: RWAEscrowVaultABI,
       functionName: 'approveMilestone',
       args: [BigInt(projectId), BigInt(index)],
     });
@@ -156,7 +100,7 @@ export default function MilestoneAdmin({ projectId, escrowVault, onUpdate }: Mil
     if (selectedIndex === null) return;
     reject({
       address: escrowVault as Address,
-      abi: EscrowVaultABI,
+      abi: RWAEscrowVaultABI,
       functionName: 'rejectMilestone',
       args: [BigInt(projectId), BigInt(selectedIndex), rejectionReason],
     });
@@ -165,7 +109,7 @@ export default function MilestoneAdmin({ projectId, escrowVault, onUpdate }: Mil
   const handleRelease = (index: number) => {
     release({
       address: escrowVault as Address,
-      abi: EscrowVaultABI,
+      abi: RWAEscrowVaultABI,
       functionName: 'releaseMilestoneFunds',
       args: [BigInt(projectId), BigInt(index)],
     });

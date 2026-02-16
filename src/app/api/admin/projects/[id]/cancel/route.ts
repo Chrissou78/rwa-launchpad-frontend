@@ -1,107 +1,41 @@
+// src/app/api/admin/projects/[id]/cancel/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import { CONTRACTS } from '@/config/contracts';
+import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
 
-const PROJECT_NFT = '0x4497e4EA43C1A1Cd2B719fF0E4cea376364c1315';
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-const projectNftAbi = [
-  {
-    name: 'getProject',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'cancelProject',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_reason', type: 'string' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'getProjectStatus',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'uint8' }],
-  },
-] as const;
-
-const escrowAbi = [
-  {
-    name: 'enableRefunds',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    name: 'getProjectFunding',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'projectId', type: 'uint256' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'totalReleased', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'paymentToken', type: 'address' },
-          { name: 'fundingComplete', type: 'bool' },
-          { name: 'refundsEnabled', type: 'bool' },
-          { name: 'currentMilestone', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'projectOwner', type: 'address' },
-          { name: 'securityToken', type: 'address' },
-        ],
-      },
-    ],
-  },
-] as const;
-
-const STATUS_NAMES = ['Pending', 'Active', 'Funded', 'Completed', 'Cancelled', 'Failed'];
+const STATUS_NAMES: Record<number, string> = {
+  0: 'Draft',
+  1: 'Pending',
+  2: 'Active',
+  3: 'Funded',
+  4: 'In Progress',
+  5: 'Completed',
+  6: 'Cancelled',
+  7: 'Failed',
+};
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = parseInt(params.id);
+    // Await params in Next.js 15+
+    const { id } = await params;
+    const projectId = parseInt(id);
+    
+    if (isNaN(projectId)) {
+      return NextResponse.json({ success: false, error: 'Invalid project ID' }, { status: 400 });
+    }
+
     const body = await request.json();
     const { reason = 'Project cancelled by admin', enableRefunds = true } = body;
 
-    const adminKey = process.env.ADMIN_PRIVATE_KEY;
+    const adminKey = process.env.ADMIN_PRIVATE_KEY || process.env.VERIFIER_PRIVATE_KEY;
     if (!adminKey) {
       return NextResponse.json({ success: false, error: 'Admin key not configured' }, { status: 500 });
     }
@@ -122,21 +56,23 @@ export async function POST(
 
     // Get project info
     const project = await publicClient.readContract({
-      address: PROJECT_NFT,
-      abi: projectNftAbi,
+      address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+      abi: RWAProjectNFTABI,
       functionName: 'getProject',
       args: [BigInt(projectId)],
-    });
+    }) as any;
 
     const currentStatus = Number(project.status);
 
-    if (currentStatus === 4) {
+    // Status 6 = Cancelled
+    if (currentStatus === 6) {
       return NextResponse.json({ 
         success: false, 
         error: 'Project already cancelled' 
       }, { status: 400 });
     }
-    if (currentStatus === 3) {
+    // Status 5 = Completed
+    if (currentStatus === 5) {
       return NextResponse.json({ 
         success: false, 
         error: 'Cannot cancel completed project' 
@@ -145,15 +81,15 @@ export async function POST(
 
     const results: any = {
       projectId,
-      previousStatus: STATUS_NAMES[currentStatus],
+      previousStatus: STATUS_NAMES[currentStatus] || `Status ${currentStatus}`,
       totalRaised: Number(project.totalRaised) / 1e6,
       transactions: [],
     };
 
     // Step 1: Cancel the project
     const cancelHash = await walletClient.writeContract({
-      address: PROJECT_NFT,
-      abi: projectNftAbi,
+      address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+      abi: RWAProjectNFTABI,
       functionName: 'cancelProject',
       args: [BigInt(projectId), reason],
     });
@@ -163,22 +99,30 @@ export async function POST(
     results.cancelled = true;
 
     // Step 2: Enable refunds if requested and there are funds
-    const zeroAddress = '0x0000000000000000000000000000000000000000';
-    if (enableRefunds && project.totalRaised > 0n && project.escrowVault !== zeroAddress) {
-      const refundHash = await walletClient.writeContract({
-        address: project.escrowVault as `0x${string}`,
-        abi: escrowAbi,
-        functionName: 'enableRefunds',
-        args: [BigInt(projectId)],
-      });
+    if (enableRefunds && project.totalRaised > 0n && project.escrowVault !== ZERO_ADDRESS) {
+      try {
+        const refundHash = await walletClient.writeContract({
+          address: project.escrowVault as `0x${string}`,
+          abi: RWAEscrowVaultABI,
+          functionName: 'enableRefunds',
+          args: [BigInt(projectId)],
+        });
 
-      await publicClient.waitForTransactionReceipt({ hash: refundHash });
-      results.transactions.push({ action: 'enableRefunds', hash: refundHash });
-      results.refundsEnabled = true;
-      results.escrowVault = project.escrowVault;
+        await publicClient.waitForTransactionReceipt({ hash: refundHash });
+        results.transactions.push({ action: 'enableRefunds', hash: refundHash });
+        results.refundsEnabled = true;
+        results.escrowVault = project.escrowVault;
+      } catch (refundError: any) {
+        results.refundsEnabled = false;
+        results.refundError = refundError.message;
+      }
     } else {
       results.refundsEnabled = false;
-      results.refundReason = project.totalRaised === 0n ? 'No funds raised' : 'Refunds not requested';
+      results.refundReason = project.totalRaised === 0n 
+        ? 'No funds raised' 
+        : project.escrowVault === ZERO_ADDRESS 
+          ? 'No escrow vault' 
+          : 'Refunds not requested';
     }
 
     results.newStatus = 'Cancelled';

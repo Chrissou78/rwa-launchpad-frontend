@@ -1,107 +1,17 @@
+// src/app/admin/projects/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { createPublicClient, http } from 'viem';
-import { polygonAmoy } from 'viem/chains';
 import Header from '@/components/Header';
 import Link from 'next/link';
-import { CONTRACTS } from '@/config/contracts';
+import { EXPLORER_URL, CONTRACTS } from '@/config/contracts';
+import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
 import MilestoneAdmin from '@/components/admin/MilestoneAdmin';
+import { publicClient } from '../client';
+import { ZERO_ADDRESS, STATUS_NAMES, STATUS_COLORS } from '../constants';
 
 const PROJECT_NFT = CONTRACTS.RWAProjectNFT;
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-
-// Status mapping (0-7)
-const STATUS_NAMES: Record<number, string> = {
-  0: 'Draft',
-  1: 'Pending',
-  2: 'Active',
-  3: 'Funded',
-  4: 'In Progress',
-  5: 'Completed',
-  6: 'Cancelled',
-  7: 'Failed',
-};
-
-const STATUS_COLORS: Record<number, string> = {
-  0: 'bg-gray-500/20 text-gray-400',
-  1: 'bg-yellow-500/20 text-yellow-400',
-  2: 'bg-blue-500/20 text-blue-400',
-  3: 'bg-green-500/20 text-green-400',
-  4: 'bg-purple-500/20 text-purple-400',
-  5: 'bg-emerald-500/20 text-emerald-400',
-  6: 'bg-red-500/20 text-red-400',
-  7: 'bg-orange-500/20 text-orange-400',
-};
-
-const projectNftAbi = [
-  {
-    name: 'totalProjects',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'getProject',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-] as const;
-
-const escrowAbi = [
-  {
-    name: 'getProjectFunding',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'projectId', type: 'uint256' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'totalReleased', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'paymentToken', type: 'address' },
-          { name: 'fundingComplete', type: 'bool' },
-          { name: 'refundsEnabled', type: 'bool' },
-          { name: 'currentMilestone', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'projectOwner', type: 'address' },
-          { name: 'securityToken', type: 'address' },
-        ],
-      },
-    ],
-  },
-] as const;
 
 interface Project {
   id: number;
@@ -145,6 +55,18 @@ const formatUSDC = (value: bigint): string => {
   return '$' + (Number(value) / 1e6).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+// Local status colors (slightly different from constants.ts)
+const LOCAL_STATUS_COLORS: Record<number, string> = {
+  0: 'bg-gray-500/20 text-gray-400',
+  1: 'bg-yellow-500/20 text-yellow-400',
+  2: 'bg-blue-500/20 text-blue-400',
+  3: 'bg-green-500/20 text-green-400',
+  4: 'bg-purple-500/20 text-purple-400',
+  5: 'bg-emerald-500/20 text-emerald-400',
+  6: 'bg-red-500/20 text-red-400',
+  7: 'bg-orange-500/20 text-orange-400',
+};
+
 export default function AdminProjectsPage() {
   const { isConnected } = useAccount();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -163,29 +85,24 @@ export default function AdminProjectsPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [result, setResult] = useState<any>(null);
 
-  const client = createPublicClient({
-    chain: polygonAmoy,
-    transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
-  });
-
   useEffect(() => {
     fetchProjects();
   }, []);
 
   const fetchProjects = async () => {
     try {
-      const total = await client.readContract({
+      const total = await publicClient.readContract({
         address: PROJECT_NFT as `0x${string}`,
-        abi: projectNftAbi,
+        abi: RWAProjectNFTABI,
         functionName: 'totalProjects',
       }) as bigint;
 
       const projectList: Project[] = [];
 
       for (let i = 1; i <= Number(total); i++) {
-        const data = await client.readContract({
+        const data = await publicClient.readContract({
           address: PROJECT_NFT as `0x${string}`,
-          abi: projectNftAbi,
+          abi: RWAProjectNFTABI,
           functionName: 'getProject',
           args: [BigInt(i)],
         }) as any;
@@ -193,9 +110,9 @@ export default function AdminProjectsPage() {
         let refundsEnabled = false;
         if (data.escrowVault && data.escrowVault !== ZERO_ADDRESS) {
           try {
-            const funding = await client.readContract({
+            const funding = await publicClient.readContract({
               address: data.escrowVault as `0x${string}`,
-              abi: escrowAbi,
+              abi: RWAEscrowVaultABI,
               functionName: 'getProjectFunding',
               args: [BigInt(i)],
             }) as any;
@@ -422,7 +339,7 @@ export default function AdminProjectsPage() {
                   <tr key={project.id} className="hover:bg-gray-750">
                     <td className="px-6 py-4 text-white font-mono">#{project.id}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[project.status]}`}>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${LOCAL_STATUS_COLORS[project.status]}`}>
                         {STATUS_NAMES[project.status]}
                       </span>
                     </td>
@@ -487,7 +404,7 @@ export default function AdminProjectsPage() {
                   <h2 className="text-xl font-bold text-white">
                     Project #{selectedProject.id}
                   </h2>
-                  <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[selectedProject.status]}`}>
+                  <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${LOCAL_STATUS_COLORS[selectedProject.status]}`}>
                     {STATUS_NAMES[selectedProject.status]}
                   </span>
                 </div>
@@ -578,7 +495,7 @@ export default function AdminProjectsPage() {
                     <div className="bg-gray-700 rounded-lg p-3">
                       <p className="text-gray-400 text-xs">Security Token</p>
                       <a 
-                        href={`https://amoy.polygonscan.com/address/${selectedProject.securityToken}`}
+                        href={`${EXPLORER_URL}/address/${selectedProject.securityToken}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 font-mono text-sm break-all hover:underline"
@@ -591,7 +508,7 @@ export default function AdminProjectsPage() {
                     <div className="bg-gray-700 rounded-lg p-3">
                       <p className="text-gray-400 text-xs">Escrow Vault</p>
                       <a 
-                        href={`https://amoy.polygonscan.com/address/${selectedProject.escrowVault}`}
+                        href={`${EXPLORER_URL}/address/${selectedProject.escrowVault}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 font-mono text-sm break-all hover:underline"

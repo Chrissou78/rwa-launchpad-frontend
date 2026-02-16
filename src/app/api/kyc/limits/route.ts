@@ -1,96 +1,77 @@
+// src/app/api/kyc/limits/route.ts
 import { NextResponse } from 'next/server';
-import { createPublicClient, http, parseAbi } from 'viem';
+import { createPublicClient, http, formatUnits } from 'viem';
 import { polygonAmoy } from 'viem/chains';
+import { CONTRACTS } from '@/config/contracts';
+import { KYCManagerABI } from '@/config/abis';
 
-const KYC_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_KYC_MANAGER_ADDRESS as `0x${string}`;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
-
-const abi = parseAbi([
-  'function tierLimits(uint8) view returns (uint256)'
-]);
-
-// Tier names for response
-const TIER_NAMES = ['None', 'Bronze', 'Silver', 'Gold', 'Diamond'] as const;
+const MAX_UINT256 = BigInt('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 
 export async function GET() {
   try {
-    if (!KYC_MANAGER_ADDRESS) {
-      console.error('[KYC Limits API] KYC_MANAGER_ADDRESS not configured');
-      return NextResponse.json({
-        success: true,
-        limits: {
-          None: 0,
-          Bronze: 10000,
-          Silver: 100000,
-          Gold: 1000000,
-          Diamond: Infinity
-        },
-        byLevel: { 0: 0, 1: 10000, 2: 100000, 3: 1000000, 4: Infinity },
-        source: 'fallback-no-config'
-      });
+    if (!CONTRACTS.KYCManager) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'KYCManager not configured' 
+      }, { status: 500 });
     }
 
-    const client = createPublicClient({
+    const publicClient = createPublicClient({
       chain: polygonAmoy,
-      transport: http(RPC_URL)
+      transport: http(process.env.RPC_URL || 'https://rpc-amoy.polygon.technology'),
     });
 
-    // Fetch tier limits from contract (tiers 1-4, tier 0 is always 0)
-    const limitPromises = [1, 2, 3, 4].map(tier =>
-      client.readContract({
-        address: KYC_MANAGER_ADDRESS,
-        abi,
-        functionName: 'tierLimits',
-        args: [tier]
-      })
-    );
+    const contractAddress = CONTRACTS.KYCManager as `0x${string}`;
 
-    const rawLimits = await Promise.all(limitPromises);
-
-    // Convert from USDC decimals (6) to USD
-    // Diamond (tier 4) uses 0 to represent unlimited
-    const limits: Record<string, number> = { None: 0 };
-    const byLevel: Record<number, number> = { 0: 0 };
-
-    rawLimits.forEach((limit, index) => {
-      const tierNumber = index + 1; // 1=Bronze, 2=Silver, 3=Gold, 4=Diamond
-      const tierName = TIER_NAMES[tierNumber];
-      
-      // Diamond: 0 means unlimited
-      if (tierNumber === 4 && limit === 0n) {
-        limits[tierName] = Infinity;
-        byLevel[tierNumber] = Infinity;
-      } else {
-        const value = Number(limit) / 1_000_000;
-        limits[tierName] = value;
-        byLevel[tierNumber] = value;
-      }
-    });
-
-    console.log('[KYC Limits API] Fetched from contract:', limits);
-
-    return NextResponse.json({
-      success: true,
-      limits,
-      byLevel,
-      source: 'contract',
-      contractAddress: KYC_MANAGER_ADDRESS
-    });
-  } catch (error) {
-    console.error('[KYC Limits API] Error:', error);
+    // Fetch all level limits (1-4)
+    const limits: Record<string, number> = {};
     
+    for (let level = 1; level <= 4; level++) {
+      try {
+        const limitRaw = await publicClient.readContract({
+          address: contractAddress,
+          abi: KYCManagerABI,
+          functionName: 'levelInvestmentLimits',
+          args: [level],
+        }) as bigint;
+
+        // Check if unlimited (max uint256 or very large)
+        if (limitRaw >= MAX_UINT256 / BigInt(2)) {
+          limits[level] = Infinity;
+        } else {
+          // Convert from 18 decimals to human-readable
+          limits[level] = Number(formatUnits(limitRaw, 18));
+        }
+      } catch (e) {
+        console.error(`Error fetching limit for level ${level}:`, e);
+        limits[level] = 0;
+      }
+    }
+
+    // Map to tier names
+    const tierLimits = {
+      None: 0,
+      Bronze: limits[1] || 0,
+      Silver: limits[2] || 0,
+      Gold: limits[3] || 0,
+      Diamond: Infinity,
+      // Also include numeric keys for backwards compatibility
+      1: limits[1] || 0,
+      2: limits[2] || 0,
+      3: limits[3] || 0,
+      4: Infinity,
+    };
+
     return NextResponse.json({
       success: true,
-      limits: {
-        None: 0,
-        Bronze: 10000,
-        Silver: 100000,
-        Gold: 1000000,
-        Diamond: Infinity
-      },
-      byLevel: { 0: 0, 1: 10000, 2: 100000, 3: 1000000, 4: Infinity },
-      source: 'fallback-error',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      limits: tierLimits,
+      timestamp: Date.now(),
     });
+  } catch (error: any) {
+    console.error('Error fetching KYC limits:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message 
+    }, { status: 500 });
   }
 }

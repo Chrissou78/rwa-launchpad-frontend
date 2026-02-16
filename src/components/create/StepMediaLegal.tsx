@@ -158,7 +158,7 @@ export function StepMediaLegal({ data, updateData, uploadedUrls, setUploadedUrls
       updateData({ legalDocuments: [...data.legalDocuments, ...newFiles] })
       setUploadedUrls(prev => ({ 
         ...prev, 
-        legalDocs: [...prev.legalDocs, ...newUrls] 
+        legalDocs: [...(prev.legalDocs || []), ...newUrls] 
       }))
     } catch (error: any) {
       setUploadErrors(prev => ({ 
@@ -520,3 +520,5 @@ export function StepMediaLegal({ data, updateData, uploadedUrls, setUploadedUrls
     </div>
   )
 }
+
+export default StepMediaLegal;

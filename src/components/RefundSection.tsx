@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseAbi } from 'viem';
+import { EXPLORER_URL } from '@/config/contracts';
 
 const escrowAbi = parseAbi([
   'function claimRefund(uint256)',
@@ -123,7 +124,7 @@ export default function RefundSection({
               </p>
               {hash && (
                 <a
-                  href={`https://amoy.polygonscan.com/tx/${hash}`}
+                  href={`${EXPLORER_URL}/tx/${hash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-green-400/60 text-xs mt-2 inline-block hover:underline"

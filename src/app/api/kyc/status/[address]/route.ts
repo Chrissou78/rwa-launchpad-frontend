@@ -1,149 +1,202 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, http, parseAbi } from 'viem';
+// src/app/api/kyc/status/[address]/route.ts
+import { NextResponse } from 'next/server';
+import { createPublicClient, http, isAddress, formatUnits } from 'viem';
 import { polygonAmoy } from 'viem/chains';
+import { CONTRACTS } from '@/config/contracts';
+import { KYCManagerABI } from '@/config/abis';
 
-const KYC_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_KYC_MANAGER_ADDRESS as `0x${string}`;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
+const LEVEL_NAMES: Record<number, string> = {
+  0: 'None',
+  1: 'Bronze',
+  2: 'Silver',
+  3: 'Gold',
+  4: 'Diamond',
+};
 
-// Simplified ABI with just the functions we need
-const abi = parseAbi([
-  'function getKYCSubmission(address _user) view returns ((address user, uint8 status, uint8 level, uint8 requestedLevel, uint16 countryCode, bytes32 documentHash, bytes32 dataHash, uint256 submittedAt, uint256 verifiedAt, uint256 expiresAt, address verifiedBy, bool autoVerified, uint8 rejectionReason, string rejectionDetails, uint8 verificationScore, uint256 totalInvested))',
-  'function getInvestmentLimit(address _user) view returns (uint256)',
-  'function getRemainingLimit(address _user) view returns (uint256)',
-  'function investmentLimits(uint8) view returns (uint256)'
-]);
+const STATUS_NAMES: Record<number, string> = {
+  0: 'Pending',
+  1: 'Approved',
+  2: 'Rejected',
+  3: 'Expired'
+};
 
-const STATUS_NAMES = ['None', 'Pending', 'AutoVerifying', 'ManualReview', 'Approved', 'Rejected', 'Expired', 'Revoked'];
-const TIER_NAMES = ['None', 'Bronze', 'Silver', 'Gold', 'Diamond'];
+const client = createPublicClient({
+  chain: polygonAmoy,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+});
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const MAX_UINT256 = BigInt('115792089237316195423570985008687907853269984665640564039457584007913129639935');
+
+// ✅ Fixed: Use 18 decimals
+const convertFromContract = (value: bigint): number => {
+  if (value >= MAX_UINT256 / BigInt(2)) return Infinity;
+  return Number(formatUnits(value, 18));
+};
 
 export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ address: string }> }
+  request: Request,
+  { params }: { params: { address: string } }
 ) {
   try {
-    const { address } = await context.params;
+    const { address } = await params;
 
-    // Validate address format
-    if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
-      return NextResponse.json({ 
-        found: false, 
-        error: 'Invalid address format' 
-      }, { status: 400 });
+    if (!address || !isAddress(address)) {
+      return NextResponse.json(
+        { error: 'Invalid address' },
+        { status: 400 }
+      );
     }
 
-    // Check if contract address is configured
-    if (!KYC_MANAGER_ADDRESS) {
-      console.error('KYC_MANAGER_ADDRESS not configured');
-      return NextResponse.json({
-        found: false,
-        error: 'Contract not configured',
-        submission: null
-      });
+    if (!CONTRACTS.KYCManager) {
+      return NextResponse.json(
+        { error: 'KYC Manager not configured', found: false, tier: 'None', status: 'None', isValid: false },
+        { status: 500 }
+      );
     }
+
+    const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
 
     console.log(`Fetching KYC status for ${address} from contract ${KYC_MANAGER_ADDRESS}`);
 
-    const client = createPublicClient({
-      chain: polygonAmoy,
-      transport: http(RPC_URL)
-    });
-
-    // Try to read submission from contract
-    let submission;
+    // Get submission data
+    let submission: any;
     try {
       submission = await client.readContract({
         address: KYC_MANAGER_ADDRESS,
-        abi,
-        functionName: 'getKYCSubmission',
-        args: [address as `0x${string}`]
+        abi: KYCManagerABI,
+        functionName: 'getSubmission',
+        args: [address as `0x${string}`],
       });
     } catch (error) {
       console.error('Error reading submission:', error);
       return NextResponse.json({
         found: false,
-        submission: null,
-        error: 'Failed to read from contract'
+        address,
+        tier: 'None',
+        status: 'None',
+        isValid: false,
+        message: 'No KYC submission found or contract error'
       });
     }
 
-    // Check if user has a submission (status > 0 or submittedAt > 0)
-    if (submission.status === 0 && submission.submittedAt === 0n) {
-      return NextResponse.json({ 
-        found: false, 
-        submission: null 
+    console.log('Raw submission:', submission);
+
+    // Check if this is an empty/default submission
+    const investorAddress = submission.investor || submission[0];
+    const submittedAt = submission.submittedAt || submission[3];
+    
+    if (investorAddress === ZERO_ADDRESS || submittedAt === BigInt(0)) {
+      return NextResponse.json({
+        found: false,
+        address,
+        tier: 'None',
+        status: 'None',
+        isValid: false,
+        message: 'No KYC submission found'
       });
     }
 
-    // Get investment limits
-    let investmentLimit = 0;
-    let remainingLimit = 0;
+    // Extract data from submission
+    const level = Number(submission.level ?? submission[1]);
+    const status = Number(submission.status ?? submission[2]);
+    const reviewedAt = submission.reviewedAt ?? submission[4];
+    const expiresAt = submission.expiresAt ?? submission[5];
+    const reviewer = submission.reviewer ?? submission[6];
+    const documentHash = submission.documentHash ?? submission[7];
+    const countryCode = Number(submission.countryCode ?? submission[8]);
+
+    // Fetch additional data
+    let isValid = false;
+    let remainingLimit = BigInt(0);
+    let totalInvested = BigInt(0);
+    let investmentLimit = BigInt(0);
 
     try {
-      const [limitResult, remainingResult] = await Promise.all([
+      const [validResult, remainingResult, investedResult, limitResult] = await Promise.all([
         client.readContract({
           address: KYC_MANAGER_ADDRESS,
-          abi,
-          functionName: 'getInvestmentLimit',
-          args: [address as `0x${string}`]
-        }),
+          abi: KYCManagerABI,
+          functionName: 'isKYCValid',
+          args: [address as `0x${string}`],
+        }).catch(() => false),
         client.readContract({
           address: KYC_MANAGER_ADDRESS,
-          abi,
+          abi: KYCManagerABI,
           functionName: 'getRemainingLimit',
-          args: [address as `0x${string}`]
-        })
+          args: [address as `0x${string}`],
+        }).catch(() => BigInt(0)),
+        client.readContract({
+          address: KYC_MANAGER_ADDRESS,
+          abi: KYCManagerABI,
+          functionName: 'getTotalInvested',
+          args: [address as `0x${string}`],
+        }).catch(() => BigInt(0)),
+        client.readContract({
+          address: KYC_MANAGER_ADDRESS,
+          abi: KYCManagerABI,
+          functionName: 'getInvestmentLimit',
+          args: [address as `0x${string}`],
+        }).catch(() => BigInt(0)),
       ]);
 
-      // Convert from USDC decimals (6) to USD
-      // Check for max uint256 (unlimited)
-      const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
-      
-      if (limitResult >= MAX_UINT256 - 1000n) {
-        investmentLimit = Infinity;
-      } else {
-        investmentLimit = Number(limitResult) / 1e6;
-      }
-
-      if (remainingResult >= MAX_UINT256 - 1000n) {
-        remainingLimit = Infinity;
-      } else {
-        remainingLimit = Number(remainingResult) / 1e6;
-      }
+      isValid = validResult as boolean;
+      remainingLimit = remainingResult as bigint;
+      totalInvested = investedResult as bigint;
+      investmentLimit = limitResult as bigint;
     } catch (error) {
-      console.error('Error reading limits:', error);
-      // Continue with default values
+      console.error('Error fetching additional KYC data:', error);
     }
 
-    const totalInvested = Number(submission.totalInvested) / 1e6;
+    // Log raw values for debugging
+    console.log('Raw contract values:', {
+      remainingLimit: remainingLimit.toString(),
+      totalInvested: totalInvested.toString(),
+      investmentLimit: investmentLimit.toString(),
+    });
 
     return NextResponse.json({
       found: true,
+      address,
+      tier: LEVEL_NAMES[level] || 'None',
+      level,
+      status: STATUS_NAMES[status] || 'Unknown',
+      statusCode: status,
+      countryCode,
+      submittedAt: Number(submittedAt),
+      reviewedAt: Number(reviewedAt),
+      expiresAt: Number(expiresAt),
+      reviewer,
+      documentHash,
+      isValid,
+      remainingLimit: convertFromContract(remainingLimit),
+      totalInvested: convertFromContract(totalInvested),
+      investmentLimit: convertFromContract(investmentLimit),
       submission: {
-        wallet: submission.user,
-        status: STATUS_NAMES[submission.status] || 'None',
-        level: submission.level,
-        tier: TIER_NAMES[submission.level] || 'None',
-        requestedLevel: submission.requestedLevel,
-        countryCode: submission.countryCode,
-        submittedAt: Number(submission.submittedAt),
-        verifiedAt: Number(submission.verifiedAt),
-        expiresAt: Number(submission.expiresAt),
-        verifiedBy: submission.verifiedBy,
-        autoVerified: submission.autoVerified,
-        rejectionReason: submission.rejectionReason,
-        rejectionDetails: submission.rejectionDetails,
-        verificationScore: submission.verificationScore,
-        totalInvested,
-        investmentLimit,
-        remainingLimit
+        investor: investorAddress,
+        level,
+        status,
+        submittedAt: Number(submittedAt),
+        reviewedAt: Number(reviewedAt),
+        expiresAt: Number(expiresAt),
+        reviewer,
+        documentHash,
+        countryCode,
+        totalInvested: convertFromContract(totalInvested),
+        remainingLimit: convertFromContract(remainingLimit),
       }
     });
   } catch (error) {
-    console.error('KYC status API error:', error);
-    return NextResponse.json({ 
-      found: false,
-      error: error instanceof Error ? error.message : 'Internal server error',
-      submission: null
-    }, { status: 500 });
+    console.error('KYC Status API Error:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to fetch KYC status',
+        found: false,
+        tier: 'None',
+        status: 'None',
+        isValid: false
+      },
+      { status: 500 }
+    );
   }
 }

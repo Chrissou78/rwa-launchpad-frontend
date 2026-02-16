@@ -14,6 +14,13 @@ export const CONTRACT_LEVEL_TO_TIER: Record<number, KYCTier> = {
   4: 'Diamond'
 };
 
+export const CONTRACT_STATUS_TO_STRING: Record<number, KYCStatus> = {
+  0: 'Pending',
+  1: 'Approved',
+  2: 'Rejected',
+  3: 'Expired'
+};
+
 export const TIER_TO_CONTRACT_LEVEL: Record<KYCTier, number> = {
   'None': 0,
   'Bronze': 1,
@@ -51,7 +58,7 @@ export interface TierInfo {
 }
 
 // ============================================
-// GLOBAL CACHE (shared across all instances)
+// GLOBAL CACHE
 // ============================================
 const globalCache = {
   tierLimits: null as Record<KYCTier, number> | null,
@@ -61,10 +68,9 @@ const globalCache = {
   isFetchingStatus: new Set<string>()
 };
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-const MIN_FETCH_INTERVAL = 3000; // 3 seconds minimum
+const CACHE_DURATION = 5 * 60 * 1000;
+const MIN_FETCH_INTERVAL = 3000;
 
-// Default tier limits
 const DEFAULT_TIER_LIMITS: Record<KYCTier, number> = {
   None: 0,
   Bronze: 10000,
@@ -190,19 +196,16 @@ const KYCContext = createContext<KYCContextValue>({
 });
 
 // ============================================
-// Global fetch functions (singleton pattern)
+// Global fetch functions
 // ============================================
 async function fetchTierLimitsGlobal(force = false): Promise<Record<KYCTier, number>> {
   const now = Date.now();
   
-  // Return cached if fresh
   if (!force && globalCache.tierLimits && (now - globalCache.tierLimitsTimestamp) < CACHE_DURATION) {
     return globalCache.tierLimits;
   }
   
-  // Skip if already fetching
   if (globalCache.isFetchingLimits) {
-    // Wait for existing fetch
     await new Promise(resolve => setTimeout(resolve, 100));
     if (globalCache.tierLimits) return globalCache.tierLimits;
     return DEFAULT_TIER_LIMITS;
@@ -241,12 +244,10 @@ async function fetchKYCStatusGlobal(address: string, force = false): Promise<any
   const now = Date.now();
   const cached = globalCache.statusCache.get(address);
   
-  // Return cached if fresh
   if (!force && cached && (now - cached.timestamp) < MIN_FETCH_INTERVAL) {
     return cached.data;
   }
   
-  // Skip if already fetching this address
   if (globalCache.isFetchingStatus.has(address)) {
     await new Promise(resolve => setTimeout(resolve, 100));
     return globalCache.statusCache.get(address)?.data || null;
@@ -281,12 +282,15 @@ export function KYCProvider({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true);
   const lastAddressRef = useRef<string | null>(null);
 
-  // Load tier limits
+  // Load tier limits on mount
   useEffect(() => {
     let cancelled = false;
     
     const loadLimits = async () => {
-      const limits = await fetchTierLimitsGlobal();
+      globalCache.tierLimits = null;
+      globalCache.tierLimitsTimestamp = 0;
+      
+      const limits = await fetchTierLimitsGlobal(true);
       if (!cancelled && mountedRef.current) {
         setTierLimits(limits);
         setAllTiers(createTierInfo(limits));
@@ -308,7 +312,6 @@ export function KYCProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Skip if same address AND we already have non-loading data
     if (lastAddressRef.current === address && !kycData.isLoading && kycData.tier !== 'None') {
       return;
     }
@@ -319,6 +322,13 @@ export function KYCProvider({ children }: { children: ReactNode }) {
     const loadStatus = async () => {
       setKycData(prev => ({ ...prev, isLoading: true }));
       
+      // ✅ ALWAYS fetch fresh limits FIRST
+      const currentLimits = await fetchTierLimitsGlobal(true);  // Force fresh fetch
+      
+      // Update limits state immediately
+      setTierLimits(currentLimits);
+      setAllTiers(createTierInfo(currentLimits));
+      
       const data = await fetchKYCStatusGlobal(address);
       
       if (cancelled || !mountedRef.current) return;
@@ -326,24 +336,20 @@ export function KYCProvider({ children }: { children: ReactNode }) {
       if (data?.found && data.submission) {
         const submission = data.submission;
         const tier = CONTRACT_LEVEL_TO_TIER[submission.level] || 'None';
-        const investmentLimit = tier === 'Diamond' ? Infinity : (tierLimits[tier] || 0);
-        const usedLimit = submission.totalInvested || 0;
         
-        let remainingLimit: number;
-        if (tier === 'Diamond') {
-          remainingLimit = Infinity;
-        } else if (submission.remainingLimit !== undefined) {
-          remainingLimit = submission.remainingLimit;
-        } else {
-          remainingLimit = Math.max(0, investmentLimit - usedLimit);
-        }
+        // ✅ Use currentLimits (just fetched), NOT data.investmentLimit
+        const investmentLimit = tier === 'Diamond' ? Infinity : (currentLimits[tier] || 0);
+        const usedLimit = submission.totalInvested || 0;
+        const remainingLimit = tier === 'Diamond' ? Infinity : Math.max(0, investmentLimit - usedLimit);
+        
+        console.log('[KYCContext] Setting kycData with:', { tier, investmentLimit, currentLimits });
         
         setKycData({
           tier,
-          status: submission.status as KYCStatus,
-          investmentLimit,
+          status: CONTRACT_STATUS_TO_STRING[submission.status] || 'None',
+          investmentLimit,  // ✅ From currentLimits
           usedLimit,
-          remainingLimit,
+          remainingLimit,   // ✅ Calculated from currentLimits
           expiresAt: submission.expiresAt,
           countryCode: submission.countryCode,
           requestedLevel: submission.requestedLevel,
@@ -361,7 +367,7 @@ export function KYCProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [address, isConnected, tierLimits]);
+  }, [address, isConnected]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -371,23 +377,34 @@ export function KYCProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Auto-refresh every 60 seconds
+  // Auto-refresh every 5 minutes
   useEffect(() => {
     if (!isConnected || !address) return;
     
     const interval = setInterval(async () => {
+      // Fetch fresh limits
+      const currentLimits = await fetchTierLimitsGlobal(true);
+      
       const data = await fetchKYCStatusGlobal(address, true);
-      if (data?.found && data.submission && mountedRef.current) {
+      
+      if (!mountedRef.current) return;
+      
+      setTierLimits(currentLimits);
+      setAllTiers(createTierInfo(currentLimits));
+      
+      if (data?.found && data.submission) {
         const submission = data.submission;
         const tier = CONTRACT_LEVEL_TO_TIER[submission.level] || 'None';
-        const investmentLimit = tier === 'Diamond' ? Infinity : (tierLimits[tier] || 0);
+        
+        const investmentLimit = tier === 'Diamond' ? Infinity : (currentLimits[tier] || 0);
         const usedLimit = submission.totalInvested || 0;
         const remainingLimit = tier === 'Diamond' ? Infinity : Math.max(0, investmentLimit - usedLimit);
         
         setKycData(prev => ({
           ...prev,
           tier,
-          status: submission.status as KYCStatus,
+          status: CONTRACT_STATUS_TO_STRING[submission.status] || 'None',
+          investmentLimit,
           usedLimit,
           remainingLimit
         }));
@@ -395,15 +412,67 @@ export function KYCProvider({ children }: { children: ReactNode }) {
     }, 300000);
     
     return () => clearInterval(interval);
-  }, [isConnected, address, tierLimits]);
+  }, [isConnected, address]);
+
+  // Listen for cache invalidation events
+  useEffect(() => {
+    const handleCacheUpdate = async () => {
+      console.log('[KYCContext] Cache invalidation triggered, refreshing...');
+      
+      // Clear global cache
+      globalCache.tierLimits = null;
+      globalCache.tierLimitsTimestamp = 0;
+      
+      // Fetch fresh limits
+      const limits = await fetchTierLimitsGlobal(true);
+      
+      if (!mountedRef.current) return;
+      
+      setTierLimits(limits);
+      setAllTiers(createTierInfo(limits));
+      
+      // Update kycData with new limits
+      setKycData(prev => {
+        if (prev.tier === 'None' || prev.status !== 'Approved') return prev;
+        
+        const newInvestmentLimit = prev.tier === 'Diamond' ? Infinity : (limits[prev.tier] || 0);
+        const newRemainingLimit = prev.tier === 'Diamond' ? Infinity : Math.max(0, newInvestmentLimit - prev.usedLimit);
+        
+        console.log('[KYCContext] Updated kycData with new limits:', { 
+          tier: prev.tier, 
+          oldLimit: prev.investmentLimit,
+          newLimit: newInvestmentLimit 
+        });
+        
+        return {
+          ...prev,
+          investmentLimit: newInvestmentLimit,
+          remainingLimit: newRemainingLimit,
+        };
+      });
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('kyc-limits-updated', handleCacheUpdate);
+      return () => {
+        window.removeEventListener('kyc-limits-updated', handleCacheUpdate);
+      };
+    }
+  }, []);
 
   const refreshKYC = useCallback(async () => {
+    // Clear cache and fetch fresh
+    globalCache.tierLimits = null;
+    globalCache.tierLimitsTimestamp = 0;
+    
     const limits = await fetchTierLimitsGlobal(true);
     setTierLimits(limits);
     setAllTiers(createTierInfo(limits));
     
     if (address) {
+      globalCache.statusCache.delete(address);
       const data = await fetchKYCStatusGlobal(address, true);
+      
       if (data?.found && data.submission) {
         const submission = data.submission;
         const tier = CONTRACT_LEVEL_TO_TIER[submission.level] || 'None';
@@ -413,7 +482,7 @@ export function KYCProvider({ children }: { children: ReactNode }) {
         
         setKycData({
           tier,
-          status: submission.status as KYCStatus,
+          status: CONTRACT_STATUS_TO_STRING[submission.status] || 'None',
           investmentLimit,
           usedLimit,
           remainingLimit,

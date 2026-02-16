@@ -1,97 +1,16 @@
+// src/components/project/MilestoneManager.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, Address } from 'viem';
 import { polygonAmoy } from 'viem/chains';
+import { RWAEscrowVaultABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
   chain: polygonAmoy,
-  transport: http('https://rpc-amoy.polygon.technology'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
 });
-
-const EscrowVaultABI = [
-  {
-    name: 'addMilestone',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_description', type: 'string' },
-      { name: '_percentage', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'submitMilestone',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_milestoneIndex', type: 'uint256' },
-      { name: '_proofURI', type: 'string' },
-    ],
-    outputs: [],
-  },
-  {
-    name: 'getMilestones',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple[]',
-        components: [
-          { name: 'description', type: 'string' },
-          { name: 'percentage', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'proofURI', type: 'string' },
-          { name: 'submittedAt', type: 'uint256' },
-          { name: 'approvedAt', type: 'uint256' },
-          { name: 'releasedAmount', type: 'uint256' },
-          { name: 'rejectionReason', type: 'string' },
-          { name: 'disputeRaiser', type: 'address' },
-          { name: 'disputeReason', type: 'string' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'getMilestoneCount',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'getProjectFunding',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'projectId', type: 'uint256' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'totalReleased', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'paymentToken', type: 'address' },
-          { name: 'fundingComplete', type: 'bool' },
-          { name: 'refundsEnabled', type: 'bool' },
-          { name: 'currentMilestone', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'projectOwner', type: 'address' },
-          { name: 'securityToken', type: 'address' },
-        ],
-      },
-    ],
-  },
-] as const;
 
 const MILESTONE_STATUS: Record<number, { label: string; color: string }> = {
   0: { label: 'Pending', color: 'bg-gray-500/20 text-gray-400' },
@@ -155,13 +74,13 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
       const [milestonesData, funding] = await Promise.all([
         publicClient.readContract({
           address: escrowVault as Address,
-          abi: EscrowVaultABI,
+          abi: RWAEscrowVaultABI,
           functionName: 'getMilestones',
           args: [BigInt(projectId)],
         }),
         publicClient.readContract({
           address: escrowVault as Address,
-          abi: EscrowVaultABI,
+          abi: RWAEscrowVaultABI,
           functionName: 'getProjectFunding',
           args: [BigInt(projectId)],
         }),
@@ -197,7 +116,7 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
     const percentage = Math.round(parseFloat(newPercentage) * 100); // Convert to basis points
     addMilestone({
       address: escrowVault as Address,
-      abi: EscrowVaultABI,
+      abi: RWAEscrowVaultABI,
       functionName: 'addMilestone',
       args: [BigInt(projectId), newDescription, BigInt(percentage)],
     });
@@ -207,7 +126,7 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
     if (selectedMilestoneIndex === null) return;
     submitMilestone({
       address: escrowVault as Address,
-      abi: EscrowVaultABI,
+      abi: RWAEscrowVaultABI,
       functionName: 'submitMilestone',
       args: [BigInt(projectId), BigInt(selectedMilestoneIndex), proofURI],
     });

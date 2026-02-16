@@ -5,6 +5,7 @@ import { createWalletClient, createPublicClient, http, parseUnits } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
+import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -25,7 +26,7 @@ function getWebhookSecret() {
   return process.env.STRIPE_WEBHOOK_SECRET;
 }
 
-// ABIs
+// OffChainInvestmentManager ABI - specific to this contract, not in central file
 const OffChainInvestmentManagerABI = [
   {
     name: 'createInvestment',
@@ -56,62 +57,6 @@ const OffChainInvestmentManagerABI = [
   },
 ] as const;
 
-const RWASecurityTokenABI = [
-  {
-    name: 'mintForOffChainPayment',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_to', type: 'address' },
-      { name: '_tokenAmount', type: 'uint256' },
-      { name: '_paymentMethod', type: 'string' },
-      { name: '_paymentReference', type: 'string' },
-    ],
-    outputs: [],
-  },
-] as const;
-
-const RWAProjectNFTABI = [
-  {
-    name: 'getProject',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: 'project',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-  {
-    name: 'updateTotalRaised',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: '_projectId', type: 'uint256' },
-      { name: '_totalRaised', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-] as const;
-
 const publicClient = createPublicClient({
   chain: polygonAmoy,
   transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
@@ -128,6 +73,12 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   console.log(`Processing Stripe payment: project=${projectId}, investor=${investorAddress}, amount=$${amountUSD}`);
 
   try {
+    if (!CONTRACTS.RWAProjectNFT) {
+      console.error('RWAProjectNFT contract not configured');
+      await storeFailedPayment(paymentIntent, 'RWAProjectNFT not configured');
+      return;
+    }
+
     const project = await publicClient.readContract({
       address: CONTRACTS.RWAProjectNFT as `0x${string}`,
       abi: RWAProjectNFTABI,

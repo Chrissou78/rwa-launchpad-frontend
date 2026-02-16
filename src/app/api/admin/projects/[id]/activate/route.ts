@@ -1,21 +1,10 @@
+// src/app/api/admin/projects/[id]/activate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createWalletClient, createPublicClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
-
-const projectNftAbi = [
-  {
-    name: 'updateProjectStatus',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'newStatus', type: 'uint8' },
-    ],
-    outputs: [],
-  },
-] as const;
+import { RWAProjectNFTABI } from '@/config/abis';
 
 export async function POST(
   request: NextRequest,
@@ -50,7 +39,7 @@ export async function POST(
     // Update status to Active (2)
     const hash = await walletClient.writeContract({
       address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-      abi: projectNftAbi,
+      abi: RWAProjectNFTABI,
       functionName: 'updateProjectStatus',
       args: [BigInt(projectId), 2], // 2 = Active
     });

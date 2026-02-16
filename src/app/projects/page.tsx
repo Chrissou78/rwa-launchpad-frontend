@@ -1,3 +1,4 @@
+// src/app/projects/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -7,54 +8,12 @@ import { createPublicClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import Header from '@/components/Header';
 import { CONTRACTS } from '@/config/contracts';
+import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
   chain: polygonAmoy,
-  transport: http('https://rpc-amoy.polygon.technology'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
 });
-
-const RWAProjectNFTABI = [
-  {
-    name: 'totalProjects',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'getProject',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-] as const;
-
-const RWASecurityTokenABI = [
-  { name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
-  { name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
-] as const;
 
 interface ProjectMetadata {
   name?: string;
@@ -309,6 +268,12 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     async function loadProjects() {
+      if (!CONTRACTS.RWAProjectNFT) {
+        setError('RWAProjectNFT contract not configured');
+        setLoading(false);
+        return;
+      }
+
       try {
         const total = await publicClient.readContract({
           address: CONTRACTS.RWAProjectNFT as `0x${string}`,

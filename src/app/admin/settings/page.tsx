@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import Header from '@/components/Header';
 import Link from 'next/link';
+import { EXPLORER_URL } from '@/config/contracts';
 
 interface FeeSettings {
   transactionFee: string;
@@ -215,7 +216,7 @@ export default function AdminSettingsPage() {
               <div className="bg-gray-700/50 rounded-lg p-4 mb-6">
                 <p className="text-gray-400 text-sm">Current Recipient</p>
                 <a
-                  href={`https://amoy.polygonscan.com/address/${settings.feeRecipient}`}
+                  href={`${EXPLORER_URL}/address/${settings.feeRecipient}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-400 hover:text-blue-300 font-mono text-sm break-all"
@@ -430,7 +431,7 @@ export default function AdminSettingsPage() {
                       <div>
                         <p className="text-green-400 font-medium">Fees withdrawn successfully!</p>
                         <a
-                          href={`https://amoy.polygonscan.com/tx/${result.transaction}`}
+                          href={`${EXPLORER_URL}/tx/${result.transaction}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-green-400/60 text-xs hover:underline"

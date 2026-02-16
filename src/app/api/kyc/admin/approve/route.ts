@@ -1,88 +1,47 @@
+// src/app/api/kyc/admin/approve/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, createWalletClient, http, getAddress, keccak256, toBytes } from 'viem';
-import { polygonAmoy } from 'viem/chains';
-import { privateKeyToAccount } from 'viem/accounts';
+import { readFile, writeFile } from 'fs/promises';
+import path from 'path';
 
-const KYC_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_KYC_MANAGER_ADDRESS as `0x${string}`;
-const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
-
-const KYC_REVIEWER_ROLE = keccak256(toBytes('KYC_REVIEWER_ROLE'));
+const STORAGE_DIR = path.join(process.cwd(), '.kyc-storage');
 
 export async function POST(request: NextRequest) {
   try {
-    const { userAddress, level } = await request.json();
-
-    if (!userAddress || level === undefined) {
-      return NextResponse.json({ error: 'Missing userAddress or level' }, { status: 400 });
-    }
-
-    const checkedAddress = getAddress(userAddress);
-    const contractAddress = getAddress(KYC_MANAGER_ADDRESS);
-
-    const account = privateKeyToAccount(VERIFIER_PRIVATE_KEY);
+    const { walletAddress, requestedLevel, isUpgrade } = await request.json();
     
-    const publicClient = createPublicClient({
-      chain: polygonAmoy,
-      transport: http(RPC_URL)
-    });
-
-    const walletClient = createWalletClient({
-      account,
-      chain: polygonAmoy,
-      transport: http(RPC_URL)
-    });
-
-    // Check role
-    const hasRole = await publicClient.readContract({
-      address: contractAddress,
-      abi: [{
-        name: 'hasRole',
-        type: 'function',
-        inputs: [{ name: 'role', type: 'bytes32' }, { name: 'account', type: 'address' }],
-        outputs: [{ name: '', type: 'bool' }],
-        stateMutability: 'view'
-      }],
-      functionName: 'hasRole',
-      args: [KYC_REVIEWER_ROLE, account.address]
-    });
-
-    if (!hasRole) {
-      return NextResponse.json({ 
-        error: 'Account does not have KYC_REVIEWER_ROLE',
-        account: account.address
-      }, { status: 403 });
+    if (!walletAddress) {
+      return NextResponse.json({ error: 'Wallet address required' }, { status: 400 });
     }
-
-    const hash = await walletClient.writeContract({
-      address: contractAddress,
-      abi: [{
-        name: 'manualApprove',
-        type: 'function',
-        inputs: [
-          { name: '_user', type: 'address' },
-          { name: '_level', type: 'uint8' }
-        ],
-        outputs: [],
-        stateMutability: 'nonpayable'
-      }],
-      functionName: 'manualApprove',
-      args: [checkedAddress, level]
-    });
-
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-
-    return NextResponse.json({ 
-      success: true, 
-      message: `KYC approved at level ${level}`,
-      txHash: hash,
-      blockNumber: receipt.blockNumber.toString()
-    });
-
+    
+    // Update the stored submission
+    const storagePath = path.join(STORAGE_DIR, `${walletAddress.toLowerCase()}.json`);
+    const data = await readFile(storagePath, 'utf-8');
+    const submission = JSON.parse(data);
+    
+    submission.status = 'Approved';
+    submission.reviewedAt = Date.now();
+    submission.currentLevel = requestedLevel;
+    
+    await writeFile(storagePath, JSON.stringify(submission, null, 2));
+    
+    // TODO: Call contract to approve on-chain if configured
+    // const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    // const wallet = new ethers.Wallet(process.env.ADMIN_PRIVATE_KEY!, provider);
+    // const contract = new ethers.Contract(CONTRACTS.KYCManager, KYCManagerABI, wallet);
+    // if (isUpgrade) {
+    //   await contract.approveUpgrade(walletAddress);
+    // } else {
+    //   await contract.approveKYC(walletAddress);
+    // }
+    
+    console.log(`[Admin] Approved ${isUpgrade ? 'upgrade' : 'KYC'} for ${walletAddress}`);
+    
+    return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Manual approve error:', error);
+    console.error('[Admin] Approve error:', error);
     return NextResponse.json({ 
-      error: error.shortMessage || error.message || 'Failed to approve'
+      error: 'Failed to approve', 
+      details: error.message 
     }, { status: 500 });
   }
 }

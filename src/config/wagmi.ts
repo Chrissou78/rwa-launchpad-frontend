@@ -1,19 +1,25 @@
 import { http, createConfig } from 'wagmi'
-import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors'
+import { injected, walletConnect } from 'wagmi/connectors'
 import type { Chain } from 'viem'
+import { CHAIN_ID, EXPLORER_URL } from '@/config/contracts'
 
 // Polygon Amoy Testnet
 export const polygonAmoy: Chain = {
-  id: 80002,
-  name: 'Polygon Amoy',
-  nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+  id: CHAIN_ID,
+  name: CHAIN_ID === 80002 ? 'Polygon Amoy' : CHAIN_ID === 137 ? 'Polygon' : `Chain ${CHAIN_ID}`,
+  nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://rpc-amoy.polygon.technology'] },
+    default: { 
+      http: [CHAIN_ID === 80002 
+        ? 'https://rpc-amoy.polygon.technology' 
+        : 'https://polygon-rpc.com'
+      ] 
+    },
   },
   blockExplorers: {
-    default: { name: 'PolygonScan', url: 'https://amoy.polygonscan.com' },
+    default: { name: 'PolygonScan', url: EXPLORER_URL },
   },
-  testnet: true,
+  testnet: CHAIN_ID === 80002,
 }
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || ''
@@ -39,9 +45,14 @@ export const config = createConfig({
     injected(), // Fallback for other browser wallets
   ],
   transports: {
-    [polygonAmoy.id]: http('https://rpc-amoy.polygon.technology'),
+    [polygonAmoy.id]: http(
+      CHAIN_ID === 80002 
+        ? 'https://rpc-amoy.polygon.technology' 
+        : 'https://polygon-rpc.com'
+    ),
   },
   ssr: true,
 })
 
-export const CHAIN_ID = 80002
+// Re-export CHAIN_ID for convenience (from contracts.ts)
+export { CHAIN_ID } from '@/config/contracts'

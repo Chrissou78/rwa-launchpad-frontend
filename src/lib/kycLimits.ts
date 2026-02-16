@@ -1,14 +1,8 @@
-import { createPublicClient, http, parseAbi } from 'viem';
+// src/lib/kyc-limits.ts
+import { createPublicClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
-
-const KYC_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_KYC_MANAGER_ADDRESS as `0x${string}`;
-
-const abi = parseAbi([
-  'function tierLimits(uint8) view returns (uint256)',
-  'function getRemainingLimit(address) view returns (uint256)',
-  'function getTotalInvested(address) view returns (uint256)',
-  'function getKYCSubmission(address) view returns ((address user, uint8 status, uint8 level, uint8 requestedLevel, uint16 countryCode, bytes32 documentHash, bytes32 dataHash, uint256 submittedAt, uint256 verifiedAt, uint256 expiresAt, address verifiedBy, bool autoVerified, uint8 rejectionReason, string rejectionDetails, uint8 verificationScore, uint256 totalInvested))'
-]);
+import { CONTRACTS } from '@/config/contracts';
+import { KYCManagerABI } from '@/config/abis';
 
 const TIER_NAMES = ['None', 'Bronze', 'Silver', 'Gold', 'Diamond'] as const;
 type TierName = typeof TIER_NAMES[number];
@@ -31,10 +25,23 @@ export async function getTierLimitsFromContract(): Promise<TierLimits> {
     return cachedLimits;
   }
 
+  if (!CONTRACTS.KYCManager) {
+    console.warn('[KYC Limits] KYCManager contract not configured');
+    return {
+      None: 0,
+      Bronze: 10_000,
+      Silver: 100_000,
+      Gold: 1_000_000,
+      Diamond: Infinity
+    };
+  }
+
   const client = createPublicClient({
     chain: polygonAmoy,
     transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology')
   });
+
+  const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
 
   const limits: TierLimits = {
     None: 0,
@@ -46,10 +53,10 @@ export async function getTierLimitsFromContract(): Promise<TierLimits> {
 
   try {
     const results = await Promise.all([
-      client.readContract({ address: KYC_MANAGER_ADDRESS, abi, functionName: 'tierLimits', args: [1] }),
-      client.readContract({ address: KYC_MANAGER_ADDRESS, abi, functionName: 'tierLimits', args: [2] }),
-      client.readContract({ address: KYC_MANAGER_ADDRESS, abi, functionName: 'tierLimits', args: [3] }),
-      client.readContract({ address: KYC_MANAGER_ADDRESS, abi, functionName: 'tierLimits', args: [4] })
+      client.readContract({ address: KYC_MANAGER_ADDRESS, abi: KYCManagerABI, functionName: 'tierLimits', args: [1] }),
+      client.readContract({ address: KYC_MANAGER_ADDRESS, abi: KYCManagerABI, functionName: 'tierLimits', args: [2] }),
+      client.readContract({ address: KYC_MANAGER_ADDRESS, abi: KYCManagerABI, functionName: 'tierLimits', args: [3] }),
+      client.readContract({ address: KYC_MANAGER_ADDRESS, abi: KYCManagerABI, functionName: 'tierLimits', args: [4] })
     ]);
 
     limits.Bronze = Number(results[0]) / 1_000_000;
@@ -82,31 +89,38 @@ export async function getUserLimits(address: `0x${string}`): Promise<{
   used: number;
   remaining: number;
 }> {
+  if (!CONTRACTS.KYCManager) {
+    console.warn('[KYC Limits] KYCManager contract not configured');
+    return { tier: 'None', limit: 0, used: 0, remaining: 0 };
+  }
+
   const client = createPublicClient({
     chain: polygonAmoy,
     transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology')
   });
 
+  const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
+
   try {
     const [submission, remaining, invested] = await Promise.all([
-      client.readContract({ address: KYC_MANAGER_ADDRESS, abi, functionName: 'getKYCSubmission', args: [address] }),
-      client.readContract({ address: KYC_MANAGER_ADDRESS, abi, functionName: 'getRemainingLimit', args: [address] }),
-      client.readContract({ address: KYC_MANAGER_ADDRESS, abi, functionName: 'getTotalInvested', args: [address] })
+      client.readContract({ address: KYC_MANAGER_ADDRESS, abi: KYCManagerABI, functionName: 'getSubmission', args: [address] }),
+      client.readContract({ address: KYC_MANAGER_ADDRESS, abi: KYCManagerABI, functionName: 'getRemainingLimit', args: [address] }),
+      client.readContract({ address: KYC_MANAGER_ADDRESS, abi: KYCManagerABI, functionName: 'getTotalInvested', args: [address] })
     ]);
 
-    const tierIndex = submission.level as number;
+    const tierIndex = (submission as any).level as number;
     const tier = TIER_NAMES[tierIndex] || 'None';
     const limits = await getTierLimitsFromContract();
     const limit = limits[tier];
 
     const remainingNum = remaining === BigInt('115792089237316195423570985008687907853269984665640564039457584007913129639935')
       ? Infinity
-      : Number(remaining) / 1_000_000;
+      : Number(remaining as bigint) / 1_000_000;
 
     return {
       tier,
       limit,
-      used: Number(invested) / 1_000_000,
+      used: Number(invested as bigint) / 1_000_000,
       remaining: remainingNum
     };
   } catch (error) {

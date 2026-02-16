@@ -1,14 +1,16 @@
+// src/app/api/kyc/submit/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, createWalletClient, http, parseAbi } from 'viem';
+import { createPublicClient, createWalletClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { saveKYCDocuments } from '@/lib/kycStorage';
+import { CONTRACTS } from '@/config/contracts';
+import { KYCManagerABI } from '@/config/abis';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-const KYC_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_KYC_MANAGER_ADDRESS as `0x${string}`;
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
 const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY;
 
@@ -16,7 +18,6 @@ const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY;
 const AUTO_APPROVAL_THRESHOLD = 80;
 const MANUAL_REVIEW_THRESHOLD = 50;
 const FACE_DETECTION_THRESHOLD = 50;
-const FACE_MATCH_THRESHOLD = 70;
 const LIVENESS_SCORE_THRESHOLD = 70;
 
 // Blocked countries (ISO 3166-1 numeric codes)
@@ -24,13 +25,6 @@ const BLOCKED_COUNTRIES = [408, 364, 760, 729, 192];
 
 // Tier names for logging
 const TIER_NAMES = ['None', 'Bronze', 'Silver', 'Gold', 'Diamond'];
-
-// Contract ABI
-const KYC_MANAGER_ABI = parseAbi([
-  'function getKYCSubmission(address _user) view returns ((address user, uint8 status, uint8 level, uint8 requestedLevel, uint16 countryCode, bytes32 documentHash, bytes32 dataHash, uint256 submittedAt, uint256 verifiedAt, uint256 expiresAt, address verifiedBy, bool autoVerified, uint8 rejectionReason, string rejectionDetails, uint8 verificationScore, uint256 totalInvested))',
-  'function startAutoVerification(address _user)',
-  'function submitAutoVerificationResult(address _user, bool _passed, uint8 _confidenceScore, uint8 _rejectionReason, string _failureDetails)',
-]);
 
 // Rejection reason codes
 enum RejectionReason {
@@ -252,12 +246,16 @@ function evaluateUpgrade(params: {
   return { verificationScore: score, canAutoApprove: true, rejectionReason: RejectionReason.None, rejectionDetails: '' };
 }
 
-// Helper to convert File to base64
 async function fileToBase64(file: File | null): Promise<{ name: string; type: string; data: string } | undefined> {
   if (!file) return undefined;
   const buffer = await file.arrayBuffer();
   const base64 = Buffer.from(buffer).toString('base64');
   return { name: file.name, type: file.type, data: base64 };
+}
+
+function getStatusName(status: number): string {
+  const statusNames = ['Pending', 'Approved', 'Rejected', 'Expired'];
+  return statusNames[status] || 'Unknown';
 }
 
 // ============================================================================
@@ -269,6 +267,20 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData();
+
+    // DEBUG: Log all form data keys and values
+    console.log('\n========================================');
+    console.log('📥 FORM DATA RECEIVED');
+    console.log('========================================');
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        console.log(`  ${key}: FILE - ${value.name} (${value.size} bytes, ${value.type})`);
+      } else {
+        const strValue = String(value);
+        console.log(`  ${key}: ${strValue.length > 100 ? strValue.substring(0, 100) + '...' : strValue}`);
+      }
+    }
+    console.log('========================================\n');
 
     // Extract all form fields
     const walletAddress = formData.get('walletAddress') as string;
@@ -327,20 +339,75 @@ export async function POST(request: NextRequest) {
     // SAVE DOCUMENTS FOR ADMIN REVIEW
     // ==========================================
     try {
-      const kycDocs = {
+      // Get additional form fields
+      const idDocumentFront = formData.get('idDocumentFront') as File | null;
+      const idDocumentBack = formData.get('idDocumentBack') as File | null;
+      const documentType = formData.get('documentType') as string | null;
+      const documentNumber = formData.get('documentNumber') as string | null;
+      const expiryDateField = formData.get('expiryDate') as string | null;
+      
+      // Get validation data
+      const idValidationScore = parseFloat(formData.get('idValidationScore') as string) || undefined;
+      const idValidationPassed = formData.get('idValidationPassed') === 'true';
+      const idRequiresManualReview = formData.get('idRequiresManualReview') === 'true';
+      const mrzDetected = formData.get('mrzDetected') === 'true';
+      
+      let idFoundText, idMatches, mrzData;
+      try { idFoundText = JSON.parse(formData.get('idFoundText') as string || 'null'); } catch {}
+      try { idMatches = JSON.parse(formData.get('idMatches') as string || 'null'); } catch {}
+      try { mrzData = JSON.parse(formData.get('mrzData') as string || 'null'); } catch {}
+      
+      const kycDocs: KYCDocuments = {
         walletAddress,
         submittedAt: Date.now(),
+        requestedLevel,
+        currentLevel,
+        isUpgrade,
+        txHash: txHash || undefined,
+        status: 'Pending',
         email: formData.get('email') as string || undefined,
+        documentType: documentType || undefined,
+        documentNumber: documentNumber || undefined,
+        expiryDate: expiryDateField || undefined,
+        // Documents
         idDocument: await fileToBase64(idDocument),
+        idDocumentFront: await fileToBase64(idDocumentFront),
+        idDocumentBack: await fileToBase64(idDocumentBack),
         selfie: await fileToBase64(selfie),
         addressProof: await fileToBase64(addressProof),
         accreditedProof: await fileToBase64(accreditedProof),
+        // Personal info
         personalInfo: requirements.needsPersonalInfo ? {
           fullName: fullName || '',
           dateOfBirth: dateOfBirth || '',
           countryCode
-        } : undefined
+        } : undefined,
+        // Validation results
+        idValidationScore,
+        idValidationPassed,
+        idRequiresManualReview,
+        mrzDetected,
+        idFoundText,
+        idMatches,
+        mrzData,
+        // Scores
+        faceScore,
+        livenessScore,
+        livenessPassed,
       };
+      
+      console.log('\n========================================');
+      console.log('💾 SAVING KYC DOCUMENTS');
+      console.log('========================================');
+      console.log('Wallet:', walletAddress);
+      console.log('idDocument:', kycDocs.idDocument ? `${kycDocs.idDocument.name} (${kycDocs.idDocument.data?.length || 0} base64 chars)` : 'NONE');
+      console.log('idDocumentFront:', kycDocs.idDocumentFront ? `${kycDocs.idDocumentFront.name} (${kycDocs.idDocumentFront.data?.length || 0} base64 chars)` : 'NONE');
+      console.log('idDocumentBack:', kycDocs.idDocumentBack ? `${kycDocs.idDocumentBack.name} (${kycDocs.idDocumentBack.data?.length || 0} base64 chars)` : 'NONE');
+      console.log('selfie:', kycDocs.selfie ? `${kycDocs.selfie.name} (${kycDocs.selfie.data?.length || 0} base64 chars)` : 'NONE');
+      console.log('addressProof:', kycDocs.addressProof ? `${kycDocs.addressProof.name} (${kycDocs.addressProof.data?.length || 0} base64 chars)` : 'NONE');
+      console.log('accreditedProof:', kycDocs.accreditedProof ? `${kycDocs.accreditedProof.name} (${kycDocs.accreditedProof.data?.length || 0} base64 chars)` : 'NONE');
+      console.log('========================================\n');
+
       await saveKYCDocuments(kycDocs);
       console.log('📁 Documents saved for admin review');
     } catch (storageErr) {
@@ -370,7 +437,7 @@ export async function POST(request: NextRequest) {
     console.log('========================================\n');
 
     // If no blockchain config, return simulated response
-    if (!VERIFIER_PRIVATE_KEY || !KYC_MANAGER_ADDRESS) {
+    if (!VERIFIER_PRIVATE_KEY || !CONTRACTS.KYCManager) {
       console.log('⚠️ No blockchain configuration - returning simulated response');
       const status = canAutoApprove ? 'auto_approved' : verificationScore >= MANUAL_REVIEW_THRESHOLD ? 'manual_review' : 'rejected';
       return NextResponse.json({
@@ -380,73 +447,223 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Blockchain submission
+    const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
+
+    // Blockchain interaction
     try {
       const publicClient = createPublicClient({ chain: polygonAmoy, transport: http(RPC_URL) });
       const account = privateKeyToAccount(VERIFIER_PRIVATE_KEY as `0x${string}`);
       const walletClient = createWalletClient({ account, chain: polygonAmoy, transport: http(RPC_URL) });
 
+      // Read current on-chain status
       const submission = (await publicClient.readContract({
-        address: KYC_MANAGER_ADDRESS, abi: KYC_MANAGER_ABI, functionName: 'getKYCSubmission', args: [walletAddress as `0x${string}`],
-      })) as { user: string; status: number; level: number; requestedLevel: number; countryCode: number; verificationScore: number };
+        address: KYC_MANAGER_ADDRESS, 
+        abi: KYCManagerABI, 
+        functionName: 'getSubmission', 
+        args: [walletAddress as `0x${string}`],
+      })) as { investor: string; status: number; level: number; submittedAt: bigint; expiresAt: bigint };
 
       const onChainStatus = Number(submission.status);
       const onChainLevel = Number(submission.level);
 
       console.log('ON-CHAIN STATUS:', onChainStatus, getStatusName(onChainStatus), '| Level:', onChainLevel);
 
-      if (onChainStatus === 1) {
-        console.log('📤 Starting auto-verification on-chain...');
-        const tx1 = await walletClient.writeContract({
-          address: KYC_MANAGER_ADDRESS, abi: KYC_MANAGER_ABI, functionName: 'startAutoVerification', args: [walletAddress as `0x${string}`],
-        });
-        console.log('TX1:', tx1);
-        await publicClient.waitForTransactionReceipt({ hash: tx1 });
-        console.log('✅ Auto-verification started');
+      const processingTime = Date.now() - startTime;
 
-        console.log('📤 Submitting verification result...');
-        const tx2 = await walletClient.writeContract({
-          address: KYC_MANAGER_ADDRESS, abi: KYC_MANAGER_ABI, functionName: 'submitAutoVerificationResult',
-          args: [walletAddress as `0x${string}`, canAutoApprove, verificationScore, rejectionReason, rejectionDetails],
-        });
-        console.log('TX2:', tx2);
-        await publicClient.waitForTransactionReceipt({ hash: tx2 });
-        console.log('✅ Verification result submitted');
-
-        const processingTime = Date.now() - startTime;
-
-        if (canAutoApprove) {
-          return NextResponse.json({ success: true, message: `${TIER_NAMES[requestedLevel]} ${isUpgrade ? 'upgrade' : 'KYC'} auto-approved! ✅`, autoApproved: true, verificationScore, status: 'auto_approved', isUpgrade, txHash: tx2, processingTime });
-        } else if (verificationScore >= MANUAL_REVIEW_THRESHOLD) {
-          return NextResponse.json({ success: true, message: `${TIER_NAMES[requestedLevel]} ${isUpgrade ? 'upgrade' : 'application'} sent to manual review`, autoApproved: false, verificationScore, status: 'manual_review', isUpgrade, txHash: tx2, processingTime });
-        } else {
-          return NextResponse.json({ success: false, message: rejectionDetails || 'Verification rejected', autoApproved: false, verificationScore, status: 'rejected', rejectionReason: RejectionReason[rejectionReason], isUpgrade, txHash: tx2, processingTime });
+      // Status 0 = Pending
+      if (onChainStatus === 0) {
+        // BASIC level (Bronze) - contract auto-verifies internally during submitKYC
+        if (requestedLevel === 1) {
+          console.log('✅ BASIC tier - checking if auto-approved by contract...');
+          
+          // Wait for the transaction to be fully processed and re-check status
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          const updatedSubmission = (await publicClient.readContract({
+            address: KYC_MANAGER_ADDRESS,
+            abi: KYCManagerABI,
+            functionName: 'getSubmission',
+            args: [walletAddress as `0x${string}`],
+          })) as { investor: string; status: number; level: number };
+          
+          const updatedStatus = Number(updatedSubmission.status);
+          const updatedLevel = Number(updatedSubmission.level);
+          
+          console.log('Updated status after wait:', updatedStatus, getStatusName(updatedStatus), '| Level:', updatedLevel);
+          
+          if (updatedStatus === 1) {
+            // Auto-approved by contract!
+            return NextResponse.json({
+              success: true,
+              message: `${TIER_NAMES[requestedLevel]} KYC auto-approved! ✅`,
+              autoApproved: true,
+              verificationScore: 100,
+              status: 'auto_approved',
+              isUpgrade,
+              processingTime: Date.now() - startTime,
+            });
+          }
+          
+          // Still pending - return pending status (shouldn't normally happen for BASIC)
+          return NextResponse.json({
+            success: true,
+            message: `${TIER_NAMES[requestedLevel]} KYC submitted for review.`,
+            autoApproved: false,
+            verificationScore,
+            status: 'pending',
+            isUpgrade,
+            processingTime: Date.now() - startTime,
+          });
         }
+
+        // Higher tiers need manual approval from admin
+        if (canAutoApprove && verificationScore >= AUTO_APPROVAL_THRESHOLD) {
+          // Auto-approve via backend (call approveKYC)
+          console.log('📤 Auto-approving via backend...');
+          try {
+            const approveTx = await walletClient.writeContract({
+              address: KYC_MANAGER_ADDRESS,
+              abi: KYCManagerABI,
+              functionName: 'approveKYC',
+              args: [walletAddress as `0x${string}`, requestedLevel],
+            });
+            console.log('Approve TX:', approveTx);
+            await publicClient.waitForTransactionReceipt({ hash: approveTx });
+            console.log('✅ KYC auto-approved by backend');
+
+            return NextResponse.json({
+              success: true,
+              message: `${TIER_NAMES[requestedLevel]} ${isUpgrade ? 'upgrade' : 'KYC'} auto-approved! ✅`,
+              autoApproved: true,
+              verificationScore,
+              status: 'auto_approved',
+              isUpgrade,
+              txHash: approveTx,
+              processingTime: Date.now() - startTime,
+            });
+          } catch (approveError) {
+            console.error('Auto-approve failed:', approveError);
+            // Fall through to manual review
+          }
+        }
+
+        // Needs manual review
+        return NextResponse.json({
+          success: true,
+          message: `${TIER_NAMES[requestedLevel]} ${isUpgrade ? 'upgrade' : 'application'} submitted for review`,
+          autoApproved: false,
+          verificationScore,
+          status: 'pending',
+          isUpgrade,
+          processingTime: Date.now() - startTime,
+        });
       }
 
-      if (onChainStatus === 2) return NextResponse.json({ success: true, message: 'Verification already in progress', status: 'auto_verifying', onChainStatus });
-      if (onChainStatus === 3) return NextResponse.json({ success: true, message: 'Application is pending manual review', status: 'manual_review', onChainStatus });
-      if (onChainStatus === 4) return NextResponse.json({ success: true, message: `Already approved at ${TIER_NAMES[onChainLevel]} tier`, status: 'approved', currentLevel: onChainLevel, onChainStatus });
-      if (onChainStatus === 5) return NextResponse.json({ success: false, message: 'Previous application was rejected. Please submit a new KYC request.', status: 'rejected', onChainStatus });
+      // Status 1 = Approved
+      if (onChainStatus === 1) {
+        // Already approved - check if this is an upgrade request
+        if (isUpgrade && requestedLevel > onChainLevel) {
+          // Handle upgrade request
+          console.log('📤 Processing upgrade request...');
+          
+          if (canAutoApprove && verificationScore >= AUTO_APPROVAL_THRESHOLD) {
+            // Auto-approve upgrade
+            try {
+              const upgradeTx = await walletClient.writeContract({
+                address: KYC_MANAGER_ADDRESS,
+                abi: KYCManagerABI,
+                functionName: 'approveUpgrade',
+                args: [walletAddress as `0x${string}`],
+              });
+              await publicClient.waitForTransactionReceipt({ hash: upgradeTx });
+              console.log('✅ Upgrade auto-approved');
 
-      return NextResponse.json({ success: true, message: `Current status: ${getStatusName(onChainStatus)}`, status: getStatusName(onChainStatus).toLowerCase(), onChainStatus, verificationScore });
+              return NextResponse.json({
+                success: true,
+                message: `Upgraded to ${TIER_NAMES[requestedLevel]}! ✅`,
+                autoApproved: true,
+                verificationScore,
+                status: 'auto_approved',
+                isUpgrade: true,
+                txHash: upgradeTx,
+                processingTime: Date.now() - startTime,
+              });
+            } catch (upgradeError) {
+              console.error('Upgrade approval failed:', upgradeError);
+            }
+          }
+
+          // Upgrade pending manual review
+          return NextResponse.json({
+            success: true,
+            message: `Upgrade to ${TIER_NAMES[requestedLevel]} submitted for review`,
+            autoApproved: false,
+            verificationScore,
+            status: 'pending',
+            isUpgrade: true,
+            currentLevel: onChainLevel,
+            processingTime: Date.now() - startTime,
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: `Already approved at ${TIER_NAMES[onChainLevel]} tier`,
+          status: 'approved',
+          currentLevel: onChainLevel,
+          onChainStatus,
+        });
+      }
+
+      // Status 2 = Rejected
+      if (onChainStatus === 2) {
+        return NextResponse.json({
+          success: false,
+          message: 'Previous application was rejected. Please submit a new KYC request.',
+          status: 'rejected',
+          onChainStatus,
+        });
+      }
+
+      // Status 3 = Expired
+      if (onChainStatus === 3) {
+        return NextResponse.json({
+          success: false,
+          message: 'KYC has expired. Please submit a new application.',
+          status: 'expired',
+          onChainStatus,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Current status: ${getStatusName(onChainStatus)}`,
+        status: getStatusName(onChainStatus).toLowerCase(),
+        onChainStatus,
+        verificationScore,
+      });
+
     } catch (blockchainError: unknown) {
       const error = blockchainError as Error;
       console.error('❌ Blockchain error:', error);
+      
       let errorMessage = error.message || 'Blockchain transaction failed';
       if (errorMessage.includes('NotAuthorized')) errorMessage = 'Backend verifier not authorized.';
-      else if (errorMessage.includes('InvalidStatus')) errorMessage = 'KYC is not in a valid state for verification.';
+      else if (errorMessage.includes('InvalidStatus') || errorMessage.includes('NotPending')) errorMessage = 'KYC is not in a valid state for this action.';
       else if (errorMessage.includes('insufficient funds')) errorMessage = 'Backend verifier has insufficient gas.';
-      return NextResponse.json({ success: false, message: errorMessage, verificationScore, isUpgrade, error: process.env.NODE_ENV === 'development' ? error.message : undefined }, { status: 500 });
+      
+      return NextResponse.json({
+        success: false,
+        message: errorMessage,
+        verificationScore,
+        isUpgrade,
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      }, { status: 500 });
     }
+
   } catch (error: unknown) {
     const err = error as Error;
     console.error('❌ Request processing error:', err);
     return NextResponse.json({ success: false, message: err.message || 'Internal server error' }, { status: 500 });
   }
-}
-
-function getStatusName(status: number): string {
-  const statusNames = ['None', 'Pending', 'AutoVerifying', 'ManualReview', 'Approved', 'Rejected', 'Expired', 'Revoked'];
-  return statusNames[status] || 'Unknown';
 }

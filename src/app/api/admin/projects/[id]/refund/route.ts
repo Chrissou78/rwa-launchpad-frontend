@@ -1,91 +1,60 @@
+// src/app/api/admin/projects/[id]/refund/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createWalletClient, createPublicClient, http } from 'viem';
 import { polygonAmoy } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
+import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
 
-const projectNftAbi = [
-  {
-    name: 'getProject',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'owner', type: 'address' },
-          { name: 'metadataURI', type: 'string' },
-          { name: 'fundingGoal', type: 'uint256' },
-          { name: 'totalRaised', type: 'uint256' },
-          { name: 'minInvestment', type: 'uint256' },
-          { name: 'maxInvestment', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'securityToken', type: 'address' },
-          { name: 'escrowVault', type: 'address' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'completedAt', type: 'uint256' },
-          { name: 'transferable', type: 'bool' },
-        ],
-      },
-    ],
-  },
-] as const;
-
-// FIXED: enableRefunds takes projectId as argument
-const escrowAbi = [
-  {
-    name: 'enableRefunds',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: '_projectId', type: 'uint256' }],
-    outputs: [],
-  },
-] as const;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = parseInt(params.id);
+    // Await params in Next.js 15+
+    const { id } = await params;
+    const projectId = parseInt(id);
+    
+    if (isNaN(projectId)) {
+      return NextResponse.json({ success: false, error: 'Invalid project ID' }, { status: 400 });
+    }
     
     if (!process.env.VERIFIER_PRIVATE_KEY) {
       return NextResponse.json({ success: false, error: 'Server not configured' }, { status: 500 });
     }
 
     const account = privateKeyToAccount(process.env.VERIFIER_PRIVATE_KEY as `0x${string}`);
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
     
     const walletClient = createWalletClient({
       account,
       chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      transport: http(rpcUrl),
     });
 
     const publicClient = createPublicClient({
       chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      transport: http(rpcUrl),
     });
 
     // Get project to find escrow vault
     const project = await publicClient.readContract({
       address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-      abi: projectNftAbi,
+      abi: RWAProjectNFTABI,
       functionName: 'getProject',
       args: [BigInt(projectId)],
     }) as any;
 
-    if (!project.escrowVault || project.escrowVault === '0x0000000000000000000000000000000000000000') {
+    if (!project.escrowVault || project.escrowVault === ZERO_ADDRESS) {
       return NextResponse.json({ success: false, error: 'No escrow vault for this project' }, { status: 400 });
     }
 
-    // FIXED: Pass projectId to enableRefunds
+    // Enable refunds on the escrow vault
     const hash = await walletClient.writeContract({
       address: project.escrowVault as `0x${string}`,
-      abi: escrowAbi,
+      abi: RWAEscrowVaultABI,
       functionName: 'enableRefunds',
       args: [BigInt(projectId)],
     });
@@ -96,6 +65,7 @@ export async function POST(
       success: true,
       message: 'Refunds enabled successfully',
       transaction: hash,
+      escrowVault: project.escrowVault,
     });
   } catch (error: any) {
     console.error('Error enabling refunds:', error);

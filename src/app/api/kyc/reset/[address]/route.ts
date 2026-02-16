@@ -1,60 +1,10 @@
+// src/app/api/kyc/admin/[address]/reset/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, http, getAddress, keccak256, toBytes } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { polygonAmoy } from 'viem/chains';
-
-const KYC_MANAGER_ABI = [
-  {
-    name: 'revokeKYC',
-    type: 'function',
-    inputs: [
-      { name: 'user', type: 'address' },
-      { name: 'reason', type: 'string' }
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable'
-  },
-  {
-    name: 'getKYCSubmission',
-    type: 'function',
-    inputs: [{ name: 'user', type: 'address' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'user', type: 'address' },
-          { name: 'status', type: 'uint8' },
-          { name: 'level', type: 'uint8' },
-          { name: 'requestedLevel', type: 'uint8' },
-          { name: 'countryCode', type: 'uint16' },
-          { name: 'documentHash', type: 'bytes32' },
-          { name: 'dataHash', type: 'bytes32' },
-          { name: 'submittedAt', type: 'uint256' },
-          { name: 'verifiedAt', type: 'uint256' },
-          { name: 'expiresAt', type: 'uint256' },
-          { name: 'verifiedBy', type: 'address' },
-          { name: 'autoVerified', type: 'bool' },
-          { name: 'rejectionReason', type: 'uint8' },
-          { name: 'rejectionDetails', type: 'string' },
-          { name: 'verificationScore', type: 'uint8' },
-          { name: 'totalInvested', type: 'uint256' }
-        ]
-      }
-    ],
-    stateMutability: 'view'
-  },
-  {
-    name: 'hasRole',
-    type: 'function',
-    inputs: [
-      { name: 'role', type: 'bytes32' },
-      { name: 'account', type: 'address' }
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'view'
-  }
-] as const;
+import { CONTRACTS } from '@/config/contracts';
+import { KYCManagerABI } from '@/config/abis';
 
 const STATUS_NAMES: Record<number, string> = {
   0: 'None',
@@ -76,7 +26,6 @@ export async function POST(
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
-    // Await params in Next.js 15+
     const { address: rawAddress } = await params;
 
     // Parse request body for reason
@@ -101,16 +50,16 @@ export async function POST(
       );
     }
 
-    const KYC_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_KYC_MANAGER_ADDRESS as `0x${string}`;
-    const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
-
-    if (!KYC_MANAGER_ADDRESS) {
+    if (!CONTRACTS.KYCManager) {
       return NextResponse.json(
         { error: 'KYC Manager address not configured' },
         { status: 500 }
       );
     }
+
+    const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
+    const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
+    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
 
     if (!VERIFIER_PRIVATE_KEY) {
       return NextResponse.json(
@@ -145,8 +94,8 @@ export async function POST(
     try {
       const submission = await publicClient.readContract({
         address: KYC_MANAGER_ADDRESS,
-        abi: KYC_MANAGER_ABI,
-        functionName: 'getKYCSubmission',
+        abi: KYCManagerABI,
+        functionName: 'getSubmission',
         args: [userAddress]
       }) as any;
 
@@ -176,7 +125,6 @@ export async function POST(
       }
     } catch (err: any) {
       console.error('Error fetching KYC status:', err.message);
-      // Continue anyway - might be a new user
     }
 
     // Check if caller has ADMIN_ROLE
@@ -184,16 +132,15 @@ export async function POST(
     try {
       hasAdminRole = await publicClient.readContract({
         address: KYC_MANAGER_ADDRESS,
-        abi: KYC_MANAGER_ABI,
+        abi: KYCManagerABI,
         functionName: 'hasRole',
         args: [ADMIN_ROLE, account.address]
       }) as boolean;
 
       if (!hasAdminRole) {
-        // Check DEFAULT_ADMIN_ROLE
         hasAdminRole = await publicClient.readContract({
           address: KYC_MANAGER_ADDRESS,
-          abi: KYC_MANAGER_ABI,
+          abi: KYCManagerABI,
           functionName: 'hasRole',
           args: [DEFAULT_ADMIN_ROLE, account.address]
         }) as boolean;
@@ -213,19 +160,18 @@ export async function POST(
       }, { status: 403 });
     }
 
-    // Try to execute revokeKYC regardless of status (let the contract decide)
+    // Execute revokeKYC
     console.log('Executing revokeKYC...');
     try {
       const hash = await walletClient.writeContract({
         address: KYC_MANAGER_ADDRESS,
-        abi: KYC_MANAGER_ABI,
+        abi: KYCManagerABI,
         functionName: 'revokeKYC',
         args: [userAddress, reason]
       });
 
       console.log('Transaction hash:', hash);
 
-      // Wait for confirmation
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       console.log('Transaction confirmed, block:', receipt.blockNumber);
 
@@ -240,21 +186,17 @@ export async function POST(
     } catch (err: any) {
       console.error('revokeKYC failed:', err);
       
-      // Extract the actual error message
       let errorMessage = 'Unknown error';
       let errorCode = '';
       
       if (err.message) {
         errorMessage = err.message;
-        
-        // Try to extract error signature
         const sigMatch = err.message.match(/0x[a-fA-F0-9]{8}/);
         if (sigMatch) {
           errorCode = sigMatch[0];
         }
       }
 
-      // Map known error signatures
       const knownErrors: Record<string, string> = {
         '0xc19f17a9': 'NotVerifier - Caller does not have verifier/admin role',
         '0x82b42900': 'NotAdmin - Caller does not have admin role',
@@ -267,7 +209,6 @@ export async function POST(
         errorMessage = knownErrors[errorCode];
       }
 
-      // Check if it's a status-related error
       if (errorMessage.includes('InvalidStatus') || errorMessage.includes('InvalidState') || errorCode === '0x48f5c3ed') {
         return NextResponse.json({
           error: 'Cannot revoke KYC in current state',
@@ -310,12 +251,12 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid address' }, { status: 400 });
     }
 
-    const KYC_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_KYC_MANAGER_ADDRESS as `0x${string}`;
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
-
-    if (!KYC_MANAGER_ADDRESS) {
+    if (!CONTRACTS.KYCManager) {
       return NextResponse.json({ error: 'KYC Manager not configured' }, { status: 500 });
     }
+
+    const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
+    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
 
     const publicClient = createPublicClient({
       chain: polygonAmoy,
@@ -324,8 +265,8 @@ export async function GET(
 
     const submission = await publicClient.readContract({
       address: KYC_MANAGER_ADDRESS,
-      abi: KYC_MANAGER_ABI,
-      functionName: 'getKYCSubmission',
+      abi: KYCManagerABI,
+      functionName: 'getSubmission',
       args: [userAddress]
     }) as any;
 
@@ -336,7 +277,6 @@ export async function GET(
       status,
       statusName: STATUS_NAMES[status] || 'Unknown',
       level: Number(submission.level),
-      // Can reset if Approved (4) - contract restriction
       canReset: status === 4,
       message: status !== 4 && status !== 0 
         ? `Note: Contract may only allow resetting Approved (4) status. Current status is ${STATUS_NAMES[status]}.`

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Header  from '@/components/Header';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { CONTRACTS } from '@/config/contracts';
+import { EXPLORER_URL, CONTRACTS } from '@/config/contracts';
 import { IdentityRegistryABI } from '@/config/abis';
 
 export default function IdentityPage() {
@@ -151,34 +151,34 @@ export default function IdentityPage() {
                 <div className="flex justify-between">
                   <span className="text-gray-400">Identity Registry:</span>
                   <a
-                    href={`https://amoy.polygonscan.com/address/${CONTRACTS.identityRegistry}`}
+                    href={`${EXPLORER_URL}/address/${CONTRACTS.IdentityRegistry}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 hover:text-blue-400 font-mono"
                   >
-                    {CONTRACTS.identityRegistry.slice(0, 6)}...{CONTRACTS.identityRegistry.slice(-4)}
+                    {CONTRACTS.IdentityRegistry.slice(0, 6)}...{CONTRACTS.IdentityRegistry.slice(-4)}
                   </a>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Claim Topics Registry:</span>
                   <a
-                    href={`https://amoy.polygonscan.com/address/${CONTRACTS.claimTopicsRegistry}`}
+                    href={`${EXPLORER_URL}/address/${CONTRACTS.ClaimTopicsRegistry}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 hover:text-blue-400 font-mono"
                   >
-                    {CONTRACTS.claimTopicsRegistry.slice(0, 6)}...{CONTRACTS.claimTopicsRegistry.slice(-4)}
+                    {CONTRACTS.ClaimTopicsRegistry.slice(0, 6)}...{CONTRACTS.ClaimTopicsRegistry.slice(-4)}
                   </a>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Trusted Issuers Registry:</span>
                   <a
-                    href={`https://amoy.polygonscan.com/address/${CONTRACTS.trustedIssuersRegistry}`}
+                    href={`${EXPLORER_URL}/address/${CONTRACTS.TrustedIssuersRegistry}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 hover:text-blue-400 font-mono"
                   >
-                    {CONTRACTS.trustedIssuersRegistry.slice(0, 6)}...{CONTRACTS.trustedIssuersRegistry.slice(-4)}
+                    {CONTRACTS.TrustedIssuersRegistry.slice(0, 6)}...{CONTRACTS.TrustedIssuersRegistry.slice(-4)}
                   </a>
                 </div>
               </div>
