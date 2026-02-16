@@ -1,4 +1,32 @@
-// Add these to your existing src/types/project.ts file
+// src/types/project.ts
+
+// ============================================
+// PAYMENT TOKENS (for blockchain payments)
+// ============================================
+
+export const ACCEPTED_PAYMENT_TOKENS = [
+  {
+    symbol: 'USDC',
+    name: 'USD Coin',
+    address: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', // Polygon Amoy USDC
+    decimals: 6,
+    icon: '💵'
+  },
+  {
+    symbol: 'USDT',
+    name: 'Tether USD', 
+    address: '0x1dBe87Efd97c84d3a73807399EBbfcfF13Ff578e', // Polygon Amoy USDT
+    decimals: 6,
+    icon: '💲'
+  }
+] as const;
+
+export type AcceptedPaymentToken = typeof ACCEPTED_PAYMENT_TOKENS[number];
+export type PaymentTokenSymbol = AcceptedPaymentToken['symbol'];
+
+// ============================================
+// FIAT CURRENCIES
+// ============================================
 
 export interface Currency {
   code: string;
@@ -48,6 +76,19 @@ export const SUPPORTED_CURRENCIES: Currency[] = [
   { code: 'RWF', symbol: 'FRw', name: 'Rwandan Franc', flag: '🇷🇼' },
 ];
 
+// ============================================
+// MILESTONES
+// ============================================
+
+export interface Milestone {
+  id: string;
+  title: string;
+  description: string;
+  percentage: number;
+  targetDate?: string;
+  status?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+}
+
 export interface ProjectMilestone {
   id: string;
   title: string;
@@ -58,6 +99,19 @@ export interface ProjectMilestone {
   amountUSD: number;
   amountLocal: number;
 }
+
+// ============================================
+// PROJECT AMOUNTS
+// ============================================
+
+export interface ProjectAmount {
+  amount: number;
+  currency: string;
+}
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
 
 export function getCurrencyByCode(code: string): Currency | undefined {
   return SUPPORTED_CURRENCIES.find(c => c.code === code);
@@ -76,4 +130,14 @@ export function formatCurrencyAmount(amount: number, currencyCode: string): stri
     const symbol = currency?.symbol || currencyCode;
     return `${symbol}${amount.toLocaleString()}`;
   }
+}
+
+export function getPaymentTokenBySymbol(symbol: string): AcceptedPaymentToken | undefined {
+  return ACCEPTED_PAYMENT_TOKENS.find(t => t.symbol === symbol);
+}
+
+export function getPaymentTokenByAddress(address: string): AcceptedPaymentToken | undefined {
+  return ACCEPTED_PAYMENT_TOKENS.find(
+    t => t.address.toLowerCase() === address.toLowerCase()
+  );
 }
