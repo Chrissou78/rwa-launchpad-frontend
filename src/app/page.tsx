@@ -413,7 +413,7 @@ export default function LandingPage() {
                   Crowdfunding
                 </h3>
                 <p className="text-gray-400 text-sm">
-                  Launch or invest in tokenized projects. Our launchpad connects issuers with global investors.
+                  Launch or invest in tokenized projects. RWA Experts connects issuers with global investors.
                 </p>
               </div>
             </Link>
