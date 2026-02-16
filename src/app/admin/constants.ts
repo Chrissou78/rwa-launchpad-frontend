@@ -62,7 +62,7 @@ export const COUNTRY_CODES: Record<number, string> = {
   756: 'Switzerland',
 };
 
-export type AdminTab = 'overview' | 'projects' | 'offchain' | 'kyc' | 'identity' | 'contracts' | 'factory' | 'settings';
+export type AdminTab = 'overview' | 'projects' | 'offchain' | 'kyc' | 'identity' | 'contracts' | 'factory' | 'users' | 'settings';
 
 export interface Project {
   id: number;

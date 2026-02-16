@@ -6,12 +6,13 @@ import { usePathname } from 'next/navigation';
 import { ConnectButton } from './ConnectButton';
 import { useAccount } from 'wagmi';
 import { useKYC, getTierInfo, KYCTier } from '@/contexts/KYCContext';
-import { useState, useRef } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { useAdmin } from '@/hooks/useAdmin';
+import { useState, useRef, useEffect } from 'react';
+import { ChevronDown, Menu, X } from 'lucide-react';
 
-// KYC Badge Component (unchanged - keeping as is)
+// KYC Badge Component
 function KYCBadge() {
-  const { kycData, tierInfo, formatLimit, tierLimits } = useKYC();
+  const { kycData, tierInfo, formatLimit } = useKYC();
   const [showDropdown, setShowDropdown] = useState(false);
 
   if (kycData.isLoading) {
@@ -250,46 +251,85 @@ function DropdownMenu({
   );
 }
 
+// Mobile Menu Item with dropdown support
+function MobileDropdown({ 
+  label, 
+  items,
+  onItemClick
+}: { 
+  label: string; 
+  items: { href: string; label: string; description?: string }[];
+  onItemClick: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div>
+      <button
+        className="flex items-center justify-between w-full py-2 text-gray-300 hover:text-white transition-colors"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {label}
+        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="pl-4 mt-1 space-y-1 border-l border-gray-700">
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="block py-2 text-gray-400 hover:text-white transition-colors"
+              onClick={onItemClick}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Header() {
   const { isConnected } = useAccount();
   const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Use the admin hook instead of hardcoded addresses
+  const { isAdmin, isSuperAdmin, isLoading: isAdminLoading } = useAdmin();
 
-  // Determine current section
-  const isLandingPage = pathname === '/';
-  const isAboutSection = pathname.startsWith('/about');
-  const isTokeniseSection = pathname.startsWith('/tokenise');
-  const isCrowdfundingSection = ['/crowdfunding', '/projects', '/create', '/exchange', '/project'].some(
-    path => pathname.startsWith(path)
-  );
-  const isTradeSection = pathname.startsWith('/trade');
-  const isKycPage = pathname === '/kyc';
-  const isAdminSection = pathname.startsWith('/admin');
+  // Determine current section for active states
+  const isAboutSection = pathname.startsWith('/about') || pathname === '/contact';
+  const isLetsStartSection = pathname.startsWith('/tokenise') || pathname.startsWith('/crowdfunding') || pathname.startsWith('/trade');
+  const isPlatformSection = pathname === '/exchange' || pathname === '/projects' || pathname.startsWith('/project/') || pathname === '/create' || pathname === '/kyc';
 
-  // About dropdown items
+  // Menu items
   const aboutItems = [
     { href: '/about/company', label: 'Company', description: 'Our mission and vision' },
     { href: '/about/team', label: 'Team', description: 'Meet our experts' },
+    { href: '/contact', label: 'Contact', description: 'Get in touch with us' },
   ];
 
-  // Tokenisation dropdown items for landing page
-  const tokenisationItems = [
-    { href: '/tokenise', label: 'Tokenise Your Asset', description: 'Create & manage digital assets' },
-    { href: '/crowdfunding', label: 'Crowdfunding', description: 'Raise funds for your project' },
-    { href: '/trade', label: 'Trade Platform', description: 'B2B trade with escrow (Coming soon)' },
+  const letsStartItems = [
+    { href: '/tokenise', label: 'Tokenise Assets', description: 'Create & manage digital assets' },
+    { href: '/crowdfunding', label: 'Raise Funds', description: 'Launch a crowdfunding campaign' },
+    { href: '/trade', label: 'Trade', description: 'B2B trade platform (Coming soon)' },
   ];
 
-  // Crowdfunding sub-navigation items
-  const crowdfundingItems = [
-    { href: '/create', label: 'Create Project' },
-    { href: '/projects', label: 'Projects' },
-    { href: '/exchange', label: 'Exchange' },
+  const platformItems = [
+    { href: '/exchange', label: 'Exchange', description: 'Trade tokenized assets' },
+    { href: '/projects', label: 'Projects', description: 'Browse all projects' },
+    { href: '/create', label: 'Create Project', description: 'Launch your project' },
+    { href: '/kyc', label: 'Identity (KYC)', description: 'Verify your identity' },
   ];
 
-  // Determine which navigation to show
-  const showLandingNav = isLandingPage || isAboutSection || isKycPage || isAdminSection || isTokeniseSection || isTradeSection;
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   return (
-    <header className="bg-gray-900 border-b border-gray-800">
+    <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -298,97 +338,93 @@ export default function Header() {
             <span className="text-xl font-bold text-white">RWA Experts</span>
           </Link>
 
-          {/* Navigation */}
+          {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
-            {showLandingNav && !isCrowdfundingSection ? (
-              // Landing Page / About / KYC / Admin / Tokenise Navigation
-              <>
-                <DropdownMenu 
-                  label="About" 
-                  items={aboutItems}
-                  isActive={isAboutSection}
-                />
-                <DropdownMenu 
-                  label="Tokenisation" 
-                  items={tokenisationItems}
-                  isActive={isTokeniseSection || isCrowdfundingSection || isTradeSection}
-                />
-                <Link 
-                  href="/kyc" 
-                  className={`transition-colors ${
-                    isKycPage ? 'text-white' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Identity
-                </Link>
-                {isConnected && (
-                  <Link 
-                    href="/admin" 
-                    className={`transition-colors ${
-                      isAdminSection ? 'text-white' : 'text-gray-300 hover:text-white'
-                    }`}
-                  >
-                    Admin
-                  </Link>
+            <DropdownMenu 
+              label="About" 
+              items={aboutItems}
+              isActive={isAboutSection}
+            />
+            <DropdownMenu 
+              label="Let's Start" 
+              items={letsStartItems}
+              isActive={isLetsStartSection}
+            />
+            <DropdownMenu 
+              label="Platform" 
+              items={platformItems}
+              isActive={isPlatformSection}
+            />
+            {/* Admin link - only visible to admins (from database) */}
+            {isAdmin && (
+              <Link 
+                href="/admin" 
+                className={`flex items-center gap-1 transition-colors ${
+                  pathname.startsWith('/admin') ? 'text-white' : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Admin
+                {isSuperAdmin && (
+                  <span className="text-yellow-400 text-xs">★</span>
                 )}
-              </>
-            ) : (
-              // Crowdfunding Section Navigation
-              <>
-                <Link 
-                  href="/create" 
-                  className={`transition-colors ${
-                    pathname === '/create' ? 'text-white' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Create Project
-                </Link>
-                <Link 
-                  href="/projects" 
-                  className={`transition-colors ${
-                    pathname === '/projects' || pathname.startsWith('/project/') 
-                      ? 'text-white' 
-                      : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Projects
-                </Link>
-                <Link 
-                  href="/exchange" 
-                  className={`transition-colors ${
-                    pathname === '/exchange' ? 'text-white' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Exchange
-                </Link>
-                <Link 
-                  href="/kyc" 
-                  className={`transition-colors ${
-                    pathname === '/kyc' ? 'text-white' : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Identity
-                </Link>
-                {isConnected && (
-                  <Link 
-                    href="/admin" 
-                    className={`transition-colors ${
-                      pathname.startsWith('/admin') ? 'text-white' : 'text-gray-300 hover:text-white'
-                    }`}
-                  >
-                    Admin
-                  </Link>
-                )}
-              </>
+              </Link>
             )}
           </nav>
 
-          {/* Right Side: KYC Badge + Connect Button */}
+          {/* Right Side: KYC Badge + Connect Button + Mobile Menu */}
           <div className="flex items-center gap-3">
             {isConnected && <KYCBadge />}
             <ConnectButton />
+            
+            {/* Mobile Menu Button */}
+            <button
+              className="md:hidden p-2 text-gray-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation */}
+        {mobileMenuOpen && (
+          <div className="md:hidden py-4 border-t border-gray-800">
+            <nav className="space-y-2">
+              <MobileDropdown 
+                label="About" 
+                items={aboutItems}
+                onItemClick={() => setMobileMenuOpen(false)}
+              />
+              <MobileDropdown 
+                label="Let's Start" 
+                items={letsStartItems}
+                onItemClick={() => setMobileMenuOpen(false)}
+              />
+              <MobileDropdown 
+                label="Platform" 
+                items={platformItems}
+                onItemClick={() => setMobileMenuOpen(false)}
+              />
+              {/* Admin link - only visible to admins */}
+              {isAdmin && (
+                <Link 
+                  href="/admin" 
+                  className="flex items-center gap-2 py-2 text-gray-300 hover:text-white transition-colors"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Admin
+                  {isSuperAdmin && (
+                    <span className="text-yellow-400 text-xs">★ Super</span>
+                  )}
+                </Link>
+              )}
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   );
