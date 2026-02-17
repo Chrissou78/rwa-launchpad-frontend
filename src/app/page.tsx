@@ -1,1804 +1,708 @@
-﻿// src/app/tokenize/page.tsx
-'use client';
+﻿'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
-import { useConnectModal } from '@/components/ConnectButton';
-import { useKYC } from '@/contexts/KYCContext';
-import {
-  Coins,
-  Building2,
+import { useConnectModal } from '../components/ConnectButton';
+import { 
+  Building2, 
+  Zap, 
+  Briefcase, 
+  TrendingUp, 
+  Coins, 
   Package,
-  FileText,
+  Clock,
+  DollarSign,
+  Droplets,
+  Globe,
   Shield,
+  Scale,
+  ChevronRight,
+  Users,
+  FileCheck,
+  Repeat,
   CheckCircle2,
   ArrowRight,
-  Wallet,
-  Clock,
-  Globe,
-  Zap,
-  Users,
-  BarChart3,
-  Lock,
-  Send,
-  AlertCircle,
-  Briefcase,
-  Factory,
-  Gem,
-  Music,
-  Car,
-  Wheat,
-  Fuel,
-  Eye,
-  CreditCard,
-  Plus,
-  Image,
-  Key,
-  Vault,
-  Info,
-  TrendingUp,
-  Upload,
-  X,
-  File,
-  FileImage,
-  FileType,
-  Loader2,
-  Trash2,
-  Circle,
-  Play,
-  Volume2,
-  VolumeX
+  Wallet
 } from 'lucide-react';
 
-interface Application {
-  id: string;
-  asset_name: string;
-  asset_type: string;
-  status: string;
-  fee_amount: number;
-  fee_currency: string;
-  created_at: string;
-  estimated_value: number;
-  needs_escrow: boolean;
-  needs_dividends: boolean;
-}
-
-interface UploadedDocument {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  url: string;
-  documentType: string;
-  uploadedAt: Date;
-}
-
-interface DocumentType {
-  value: string;
-  label: string;
-  requiredFor: string[];
-  optional?: boolean;
-}
-
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  pending: { label: 'Pending Review', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', icon: <Clock className="w-4 h-4" /> },
-  under_review: { label: 'Under Review', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', icon: <Eye className="w-4 h-4" /> },
-  approved: { label: 'Approved', color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: <CheckCircle2 className="w-4 h-4" /> },
-  rejected: { label: 'Rejected', color: 'bg-red-500/20 text-red-400 border-red-500/30', icon: <AlertCircle className="w-4 h-4" /> },
-  payment_pending: { label: 'Awaiting Payment', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', icon: <CreditCard className="w-4 h-4" /> },
-  payment_confirmed: { label: 'Payment Confirmed', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', icon: <CheckCircle2 className="w-4 h-4" /> },
-  creation_ready: { label: 'Ready to Create', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: <Coins className="w-4 h-4" /> },
-  completed: { label: 'Completed', color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: <CheckCircle2 className="w-4 h-4" /> },
-  cancelled: { label: 'Cancelled', color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', icon: <AlertCircle className="w-4 h-4" /> },
-};
-
-// Document types with asset-type requirements
-const DOCUMENT_TYPES: DocumentType[] = [
-  // Universal Documents (required for all)
-  { value: 'valuation', label: 'Independent Valuation Report', requiredFor: ['all'] },
-  { value: 'legal_opinion', label: 'Legal Opinion / Structure', requiredFor: ['all'] },
-  
-  // Real Estate Specific
-  { value: 'title_deed', label: 'Title Deed / Property Registration', requiredFor: ['real_estate'] },
-  { value: 'land_survey', label: 'Land Survey / Cadastral Plan', requiredFor: ['real_estate'] },
-  { value: 'building_permits', label: 'Building Permits / Certificates', requiredFor: ['real_estate'] },
-  { value: 'occupancy_certificate', label: 'Certificate of Occupancy', requiredFor: ['real_estate'] },
-  { value: 'lease_agreements', label: 'Lease Agreements', requiredFor: ['real_estate'], optional: true },
-  { value: 'property_tax', label: 'Property Tax Records', requiredFor: ['real_estate'] },
-  { value: 'insurance_property', label: 'Property Insurance', requiredFor: ['real_estate'] },
-  { value: 'environmental_report', label: 'Environmental Assessment', requiredFor: ['real_estate'], optional: true },
-  
-  // Commodity Specific
-  { value: 'warehouse_receipt', label: 'Warehouse Receipt', requiredFor: ['commodity'] },
-  { value: 'quality_certificate', label: 'Quality/Grade Certificate', requiredFor: ['commodity'] },
-  { value: 'origin_certificate', label: 'Certificate of Origin', requiredFor: ['commodity'] },
-  { value: 'storage_agreement', label: 'Storage Agreement', requiredFor: ['commodity'] },
-  { value: 'insurance_commodity', label: 'Commodity Insurance', requiredFor: ['commodity'] },
-  { value: 'inspection_report', label: 'Inspection Report', requiredFor: ['commodity'] },
-  
-  // Company Equity / Private Equity Specific
-  { value: 'articles_incorporation', label: 'Articles of Incorporation', requiredFor: ['company_equity'] },
-  { value: 'shareholder_agreement', label: 'Shareholder Agreement', requiredFor: ['company_equity'] },
-  { value: 'financial_statements', label: 'Audited Financial Statements', requiredFor: ['company_equity', 'revenue_stream'] },
-  { value: 'business_plan', label: 'Business Plan', requiredFor: ['company_equity'] },
-  { value: 'cap_table', label: 'Capitalization Table', requiredFor: ['company_equity'] },
-  { value: 'due_diligence', label: 'Due Diligence Report', requiredFor: ['company_equity'], optional: true },
-  
-  // Equipment & Machinery Specific
-  { value: 'purchase_invoice', label: 'Purchase Invoice / Bill of Sale', requiredFor: ['equipment', 'vehicles'] },
-  { value: 'registration_equipment', label: 'Equipment/Vehicle Registration', requiredFor: ['equipment', 'vehicles'] },
-  { value: 'maintenance_records', label: 'Maintenance Records', requiredFor: ['equipment', 'vehicles'] },
-  { value: 'inspection_certificate', label: 'Inspection Certificate', requiredFor: ['equipment', 'vehicles'] },
-  { value: 'insurance_equipment', label: 'Equipment/Vehicle Insurance', requiredFor: ['equipment', 'vehicles'] },
-  { value: 'depreciation_schedule', label: 'Depreciation Schedule', requiredFor: ['equipment'] },
-  
-  // Intellectual Property Specific
-  { value: 'ip_registration', label: 'IP Registration Certificate', requiredFor: ['intellectual_property'] },
-  { value: 'patent_trademark', label: 'Patent/Trademark Documentation', requiredFor: ['intellectual_property'] },
-  { value: 'licensing_agreements', label: 'Licensing Agreements', requiredFor: ['intellectual_property'], optional: true },
-  { value: 'revenue_history', label: 'Revenue/Royalty History', requiredFor: ['intellectual_property', 'revenue_stream'] },
-  { value: 'ip_valuation', label: 'IP Valuation Report', requiredFor: ['intellectual_property'] },
-  
-  // Revenue Stream / Royalties Specific
-  { value: 'revenue_contracts', label: 'Revenue Contracts', requiredFor: ['revenue_stream'] },
-  { value: 'payment_history', label: 'Payment History', requiredFor: ['revenue_stream'] },
-  { value: 'credit_assessment', label: 'Credit Assessment', requiredFor: ['revenue_stream'] },
-  
-  // Product Inventory Specific
-  { value: 'inventory_list', label: 'Inventory List / Manifest', requiredFor: ['product_inventory'] },
-  { value: 'inventory_valuation', label: 'Inventory Valuation', requiredFor: ['product_inventory'] },
-  { value: 'storage_proof', label: 'Storage/Warehouse Proof', requiredFor: ['product_inventory'] },
-  { value: 'insurance_inventory', label: 'Inventory Insurance', requiredFor: ['product_inventory'] },
-  
-  // Agricultural Assets Specific
-  { value: 'land_ownership', label: 'Land Ownership / Lease', requiredFor: ['agricultural'] },
-  { value: 'crop_certification', label: 'Crop Certification', requiredFor: ['agricultural'] },
-  { value: 'yield_projections', label: 'Yield Projections', requiredFor: ['agricultural'] },
-  { value: 'agricultural_insurance', label: 'Agricultural Insurance', requiredFor: ['agricultural'] },
-  
-  // Energy Assets Specific
-  { value: 'energy_license', label: 'Energy License / Permit', requiredFor: ['energy'] },
-  { value: 'ppa_agreement', label: 'Power Purchase Agreement (PPA)', requiredFor: ['energy'] },
-  { value: 'capacity_report', label: 'Capacity / Generation Report', requiredFor: ['energy'] },
-  { value: 'environmental_permits', label: 'Environmental Permits', requiredFor: ['energy'] },
-  
-  // General Optional (available for all)
-  { value: 'photos', label: 'Asset Photos/Media', requiredFor: ['all'], optional: true },
-  { value: 'other', label: 'Other Supporting Documents', requiredFor: ['all'], optional: true },
-];
-
-// Fee structure
-const FEES = {
-  base: 750,      // Project NFT + ERC3643 Token
-  escrow: 250,    // Trade escrow add-on
-  dividend: 200,  // Dividend distributor add-on
-};
-
-// Max file size (10MB)
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const ALLOWED_FILE_TYPES = [
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-];
-
-export default function TokenisePage() {
-  const { isConnected, address } = useAccount();
+export default function LandingPage() {
+  const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
-  const { kycData } = useKYC();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  
-  const [activeTab, setActiveTab] = useState<'overview' | 'request' | 'applications'>('overview');
-  const [formData, setFormData] = useState({
-    companyName: '',
-    contactName: '',
-    email: '',
-    phone: '',
-    website: '',
-    assetType: '',
-    assetName: '',
-    assetDescription: '',
-    estimatedValue: '',
-    tokenName: '',
-    tokenSymbol: '',
-    totalSupply: '',
-    useCase: '',
-    additionalInfo: '',
-    needsEscrow: false,
-    needsDividends: false,
-  });
-  const [documents, setDocuments] = useState<UploadedDocument[]>([]);
-  const [uploadingDocument, setUploadingDocument] = useState(false);
-  const [selectedDocType, setSelectedDocType] = useState('');
-  const [uploadError, setUploadError] = useState('');
-  
-  const [submitted, setSubmitted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [loadingApplications, setLoadingApplications] = useState(false);
-  
-  // Video state
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [isVideoMuted, setIsVideoMuted] = useState(true);
 
-  const isGoldOrHigher = kycData.tier === 'Gold' || kycData.tier === 'Diamond';
-
-  const assetTypes = [
-    { value: 'company_equity', label: 'Company Equity / Shares', icon: <Building2 className="w-5 h-5" /> },
-    { value: 'real_estate', label: 'Real Estate Property', icon: <Building2 className="w-5 h-5" /> },
-    { value: 'commodity', label: 'Commodities (Gold, Silver, etc.)', icon: <Gem className="w-5 h-5" /> },
-    { value: 'product_inventory', label: 'Product Inventory', icon: <Package className="w-5 h-5" /> },
-    { value: 'intellectual_property', label: 'Intellectual Property / Patents', icon: <FileText className="w-5 h-5" /> },
-    { value: 'revenue_stream', label: 'Revenue Streams / Royalties', icon: <Music className="w-5 h-5" /> },
-    { value: 'equipment', label: 'Equipment / Machinery', icon: <Factory className="w-5 h-5" /> },
-    { value: 'vehicles', label: 'Vehicles / Fleet', icon: <Car className="w-5 h-5" /> },
-    { value: 'agricultural', label: 'Agricultural Assets', icon: <Wheat className="w-5 h-5" /> },
-    { value: 'energy', label: 'Energy Assets', icon: <Fuel className="w-5 h-5" /> },
-    { value: 'other', label: 'Other', icon: <Coins className="w-5 h-5" /> },
-  ];
-
-  const useCases = [
-    { value: 'ownership_tracking', label: 'Ownership Tracking & Management', description: 'Track and manage asset ownership on blockchain' },
-    { value: 'fractional_ownership', label: 'Fractional Ownership', description: 'Allow multiple investors to own fractions of the asset' },
-    { value: 'fundraising', label: 'Fundraising / Capital Raise', description: 'Raise capital by selling tokens to investors' },
-    { value: 'loyalty_program', label: 'Customer Loyalty Program', description: 'Reward customers with tradeable tokens' },
-    { value: 'supply_chain', label: 'Supply Chain Tracking', description: 'Track products through the supply chain' },
-    { value: 'employee_equity', label: 'Employee Equity Distribution', description: 'Distribute equity to employees via tokens' },
-    { value: 'asset_backed', label: 'Asset-Backed Token', description: 'Create tokens backed by physical assets' },
-    { value: 'membership', label: 'Membership / Access Token', description: 'Gate access to services or communities' },
-    { value: 'trade_settlement', label: 'B2B Trade Settlement', description: 'Settle trades between businesses' },
-    { value: 'other', label: 'Other', description: 'Custom use case' },
-  ];
-
-  const benefits = [
+  const categories = [
     {
-      icon: <Shield className="w-8 h-8" />,
-      title: "Secure Ownership",
-      description: "Immutable blockchain records ensure transparent and tamper-proof ownership tracking."
+      icon: <Zap className="w-10 h-10" />,
+      title: "Energy",
+      description: "Tokenize renewable energy projects, solar farms, wind turbines, and energy credits. Enable fractional investment in sustainable infrastructure.",
+      examples: ["Solar farm equity", "Wind turbine shares", "Renewable energy credits", "Carbon offset tokens"],
+      color: "from-yellow-500 to-orange-500"
     },
     {
-      icon: <Globe className="w-8 h-8" />,
-      title: "Global Transferability",
-      description: "Transfer ownership instantly to anyone worldwide without intermediaries."
+      icon: <Building2 className="w-10 h-10" />,
+      title: "Real Estate",
+      description: "Transform property ownership through fractional tokenization. From luxury apartments to commercial buildings, make real estate accessible to everyone.",
+      examples: ["Commercial buildings", "Residential properties", "REITs", "Land development"],
+      color: "from-blue-500 to-cyan-500"
     },
     {
-      icon: <BarChart3 className="w-8 h-8" />,
-      title: "Exchange Listing",
-      description: "Option to list your tokens on our exchange for secondary market trading."
+      icon: <Briefcase className="w-10 h-10" />,
+      title: "Business Trade",
+      description: "Tokenize trade receivables, invoices, and supply chain assets. Unlock working capital and streamline international trade finance.",
+      examples: ["Trade receivables", "Invoice financing", "Supply chain assets", "Export credits"],
+      color: "from-purple-500 to-pink-500"
     },
     {
-      icon: <Zap className="w-8 h-8" />,
-      title: "Automated Compliance",
-      description: "Built-in compliance rules, transfer restrictions, and investor eligibility checks."
+      icon: <TrendingUp className="w-10 h-10" />,
+      title: "Fund Raising",
+      description: "Launch compliant security token offerings (STOs) to raise capital globally. Access institutional and retail investors through regulated channels.",
+      examples: ["Equity tokens", "Debt instruments", "Revenue sharing", "Convertible notes"],
+      color: "from-green-500 to-emerald-500"
     },
     {
-      icon: <Users className="w-8 h-8" />,
-      title: "Stakeholder Management",
-      description: "Easily manage token holders, distributions, and corporate actions."
+      icon: <Coins className="w-10 h-10" />,
+      title: "Dividends Distribution",
+      description: "Automate dividend and profit distributions through smart contracts. Ensure transparent, instant payments to all token holders worldwide.",
+      examples: ["Automated payouts", "Profit sharing", "Rental income", "Interest payments"],
+      color: "from-indigo-500 to-blue-500"
     },
     {
-      icon: <Lock className="w-8 h-8" />,
-      title: "Full Control",
-      description: "You retain full control of your assets. We provide the infrastructure."
+      icon: <Package className="w-10 h-10" />,
+      title: "Commodities",
+      description: "Digitize ownership of precious metals, agricultural products, and raw materials. Trade commodities 24/7 with instant settlement.",
+      examples: ["Gold & silver", "Agricultural products", "Oil & gas", "Industrial metals"],
+      color: "from-amber-500 to-yellow-500"
     }
   ];
 
-  const process = [
+  const advantages = [
     {
-      step: "1",
-      title: "Submit Request",
-      description: "Fill out the tokenization request form with your asset details and documents."
+      icon: <Clock className="w-7 h-7" />,
+      title: "Faster Settlement",
+      description: "Traditional markets operate on T+2 settlement cycles. Tokenized assets settle in near real-time, reducing counterparty risk and freeing up capital instantly.",
+      stat: "Real-time",
+      statLabel: "Settlement"
     },
     {
-      step: "2",
-      title: "Admin Review",
-      description: "Our team reviews your submission, verifies documentation, and assesses feasibility."
+      icon: <DollarSign className="w-7 h-7" />,
+      title: "Reduced Costs",
+      description: "Eliminate intermediaries like banks, brokers, and clearinghouses. Smart contracts automate compliance, payments, and ownership transfers.",
+      stat: "Up to 90%",
+      statLabel: "Cost Reduction"
     },
     {
-      step: "3",
-      title: "Pay Fee",
-      description: "Once approved, pay the tokenization fee to proceed with token creation."
+      icon: <Droplets className="w-7 h-7" />,
+      title: "Enhanced Liquidity",
+      description: "Transform illiquid assets into tradeable tokens. Create secondary markets for assets like real estate and private equity.",
+      stat: "24/7",
+      statLabel: "Trading"
     },
     {
-      step: "4",
-      title: "Create Token",
-      description: "Access the token creation form to customize your token and deploy on-chain."
+      icon: <Globe className="w-7 h-7" />,
+      title: "Global Access",
+      description: "Blockchain networks are borderless. Reach investors worldwide without the complexities of traditional cross-border financial systems.",
+      stat: "Borderless",
+      statLabel: "Investment"
     },
     {
-      step: "5",
-      title: "Manage & Trade",
-      description: "Your tokens are live! Manage holders, distributions, and optionally list on exchange."
+      icon: <Scale className="w-7 h-7" />,
+      title: "Legal Frameworks",
+      description: "Operate within established regulatory frameworks. Tokenized securities comply with existing securities laws.",
+      stat: "Compliant",
+      statLabel: "By Design"
+    },
+    {
+      icon: <Shield className="w-7 h-7" />,
+      title: "Enhanced Security",
+      description: "Blockchain provides immutable ownership records and transparent audit trails. Every transaction is cryptographically secured.",
+      stat: "Immutable",
+      statLabel: "Records"
     }
   ];
 
-  // Video controls
-  const toggleVideoPlay = () => {
-    if (videoRef.current) {
-      if (isVideoPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsVideoPlaying(!isVideoPlaying);
-    }
-  };
-
-  const toggleVideoMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isVideoMuted;
-      setIsVideoMuted(!isVideoMuted);
-    }
-  };
-
-  // Helper function to get required documents for an asset type
-  const getRequiredDocuments = (assetType: string): DocumentType[] => {
-    if (!assetType) return [];
-    return DOCUMENT_TYPES.filter(doc => 
-      !doc.optional && (doc.requiredFor.includes(assetType) || doc.requiredFor.includes('all'))
-    );
-  };
-
-  // Helper function to get optional documents for an asset type
-  const getOptionalDocuments = (assetType: string): DocumentType[] => {
-    if (!assetType) return [];
-    return DOCUMENT_TYPES.filter(doc => 
-      doc.optional && (doc.requiredFor.includes(assetType) || doc.requiredFor.includes('all'))
-    );
-  };
-
-  // Helper function to get all available documents for an asset type
-  const getAvailableDocuments = (assetType: string): DocumentType[] => {
-    if (!assetType) return [];
-    return DOCUMENT_TYPES.filter(doc => 
-      doc.requiredFor.includes(assetType) || doc.requiredFor.includes('all')
-    );
-  };
-
-  // Check if all required documents are uploaded
-  const hasAllRequiredDocuments = (assetType: string, uploadedDocs: UploadedDocument[]): boolean => {
-    if (!assetType) return false;
-    const required = getRequiredDocuments(assetType);
-    const uploadedTypes = uploadedDocs.map(d => d.documentType);
-    return required.every(req => uploadedTypes.includes(req.value));
-  };
-
-  // Get missing required documents
-  const getMissingDocuments = (assetType: string, uploadedDocs: UploadedDocument[]): DocumentType[] => {
-    if (!assetType) return [];
-    const required = getRequiredDocuments(assetType);
-    const uploadedTypes = uploadedDocs.map(d => d.documentType);
-    return required.filter(req => !uploadedTypes.includes(req.value));
-  };
-
-  // Calculate fee based on options
-  const calculateFee = (): number => {
-    let total = FEES.base;
-    if (formData.needsEscrow) total += FEES.escrow;
-    if (formData.needsDividends) total += FEES.dividend;
-    return total;
-  };
-
-  // Load user's applications
-  const loadApplications = async () => {
-    if (!address) return;
-    
-    setLoadingApplications(true);
-    try {
-      const response = await fetch('/api/tokenization/apply', {
-        headers: { 'x-wallet-address': address },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setApplications(data.applications || []);
-      }
-    } catch (err) {
-      console.error('Error loading applications:', err);
-    } finally {
-      setLoadingApplications(false);
-    }
-  };
-
-  useEffect(() => {
-    if (address && activeTab === 'applications') {
-      loadApplications();
-    }
-  }, [address, activeTab]);
-
-  // Reset selected doc type when asset type changes
-  useEffect(() => {
-    if (formData.assetType) {
-      const availableDocs = getAvailableDocuments(formData.assetType);
-      if (availableDocs.length > 0) {
-        // Set to first required document if available
-        const requiredDocs = getRequiredDocuments(formData.assetType);
-        const firstUnuploaded = requiredDocs.find(doc => !documents.some(d => d.documentType === doc.value));
-        setSelectedDocType(firstUnuploaded?.value || availableDocs[0].value);
-      }
-    }
-  }, [formData.assetType]);
-
-  // Document upload handler
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const file = files[0];
-    setUploadError('');
-
-    // Validate file type
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      setUploadError('Invalid file type. Please upload PDF, DOC, DOCX, JPG, PNG, or WEBP files.');
-      return;
-    }
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      setUploadError('File too large. Maximum size is 10MB.');
-      return;
-    }
-
-    setUploadingDocument(true);
-
-    try {
-      const uploadFormData = new FormData();
-      uploadFormData.append('file', file);
-      uploadFormData.append('type', 'document');
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: uploadFormData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to upload file');
-      }
-
-      const data = await response.json();
-
-      const newDocument: UploadedDocument = {
-        id: `doc_${Date.now()}`,
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        url: data.url,
-        documentType: selectedDocType,
-        uploadedAt: new Date(),
-      };
-
-      setDocuments(prev => [...prev, newDocument]);
-      
-      // Auto-select next required document that hasn't been uploaded
-      const requiredDocs = getRequiredDocuments(formData.assetType);
-      const nextUnuploaded = requiredDocs.find(doc => 
-        doc.value !== selectedDocType && !documents.some(d => d.documentType === doc.value)
-      );
-      if (nextUnuploaded) {
-        setSelectedDocType(nextUnuploaded.value);
-      }
-      
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (err) {
-      console.error('Upload error:', err);
-      setUploadError('Failed to upload file. Please try again.');
-    } finally {
-      setUploadingDocument(false);
-    }
-  };
-
-  // Remove document
-  const removeDocument = (docId: string) => {
-    setDocuments(prev => prev.filter(doc => doc.id !== docId));
-  };
-
-  // Get file icon based on type
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) {
-      return <FileImage className="w-5 h-5 text-blue-400" />;
-    }
-    if (mimeType === 'application/pdf') {
-      return <FileType className="w-5 h-5 text-red-400" />;
-    }
-    return <File className="w-5 h-5 text-gray-400" />;
-  };
-
-  // Format file size
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  // Get document type label
-  const getDocTypeLabel = (value: string): string => {
-    return DOCUMENT_TYPES.find(t => t.value === value)?.label || value;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!address) return;
-    
-    if (!formData.assetName || !formData.assetType) {
-      setError('Please fill in all required fields');
-      return;
-    }
-
-    // Check for required documents based on asset type
-    const missingDocs = getMissingDocuments(formData.assetType, documents);
-    if (missingDocs.length > 0) {
-      setError(`Please upload required documents: ${missingDocs.map(d => d.label).join(', ')}`);
-      return;
-    }
-    
-    setSubmitting(true);
-    setError('');
-    
-    try {
-      const response = await fetch('/api/tokenization/apply', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-wallet-address': address,
-        },
-        body: JSON.stringify({
-          ...formData,
-          feeAmount: calculateFee(),
-          documents: documents.map(doc => ({
-            name: doc.name,
-            type: doc.documentType,
-            url: doc.url,
-            mimeType: doc.type,
-            size: doc.size,
-          })),
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to submit application');
-      }
-      
-      setSubmitted(true);
-      loadApplications();
-    } catch (err: any) {
-      setError(err.message || 'Failed to submit application');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    
-    // If asset type changes, clear documents
-    if (name === 'assetType' && value !== formData.assetType) {
-      setDocuments([]);
-    }
-    
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
-    });
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  // Reset form
-  const resetForm = () => {
-    setFormData({
-      companyName: '',
-      contactName: '',
-      email: '',
-      phone: '',
-      website: '',
-      assetType: '',
-      assetName: '',
-      assetDescription: '',
-      estimatedValue: '',
-      tokenName: '',
-      tokenSymbol: '',
-      totalSupply: '',
-      useCase: '',
-      additionalInfo: '',
-      needsEscrow: false,
-      needsDividends: false,
-    });
-    setDocuments([]);
-    setSubmitted(false);
-    setSelectedDocType('');
-  };
-
-  // Get asset type label
-  const getAssetTypeLabel = (value: string): string => {
-    return assetTypes.find(t => t.value === value)?.label || value;
-  };
+  const marketStats = [
+    { value: "$33B+", label: "Tokenized RWA Market" },
+    { value: "300%+", label: "3-Year Growth" },
+    { value: "$30T", label: "Projected Potential" },
+    { value: "24/7", label: "Global Trading" }
+  ];
 
   return (
     <div className="min-h-screen bg-gray-900">
       <Header />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded-full text-purple-400 text-sm mb-6">
-            <Coins className="w-4 h-4 mr-2" />
-            Custom Asset Tokenization
+      {/* Hero Section */}
+      <section className="relative pt-16 pb-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto text-center">
+          {/* Badge */}
+          <div className="inline-flex items-center px-4 py-2 bg-blue-500/10 border border-blue-500/30 rounded-full text-blue-400 text-sm mb-8">
+            <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
+            $33+ Billion Market & Growing
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Tokenise Your Assets
+
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+            Tokenize Real-World Assets
+            <span className="block bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+              Unlock Global Value
+            </span>
           </h1>
-          <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            Transform your real-world assets into blockchain-based security tokens. 
-            Enable fractional ownership, global trading, and automated compliance.
+          
+          <p className="text-xl text-gray-400 max-w-3xl mx-auto mb-10">
+            Transform physical and financial assets into programmable, tradeable digital tokens. 
+            From real estate to energy credits, democratize investment access and unlock liquidity 
+            through blockchain technology.
           </p>
+
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+            {!isConnected ? (
+              <button
+                onClick={openConnectModal}
+                className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition flex items-center cursor-pointer"
+              >
+                <Wallet className="mr-2 w-5 h-5" /> Connect Wallet
+              </button>
+            ) : (
+              <Link 
+                href="/crowdfunding"
+                className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition flex items-center"
+              >
+                Launch Crowdfunding <ArrowRight className="ml-2 w-5 h-5" />
+              </Link>
+            )}
+            <Link 
+              href="/tokenize"
+              className="px-8 py-4 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition border border-white/20"
+            >
+              Custom Tokenization
+            </Link>
+          </div>
+
+          {/* Market Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+            {marketStats.map((stat, index) => (
+              <div key={index} className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-5">
+                <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                  {stat.value}
+                </div>
+                <div className="text-sm text-gray-400 mt-1">{stat.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Gold KYC Requirement Notice */}
-        {!isGoldOrHigher && (
-          <div className="mb-8 p-4 bg-yellow-900/30 border border-yellow-600 rounded-xl">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-yellow-400 font-semibold mb-1">Gold KYC Required</h3>
-                <p className="text-yellow-200/80 text-sm mb-3">
-                  To tokenize assets on our platform, you need to complete Gold tier KYC verification. 
-                  This ensures compliance and protects all parties involved.
-                </p>
-                <Link
-                  href="/kyc"
-                  className="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-medium rounded-lg transition"
-                >
-                  Complete KYC Verification <ArrowRight className="ml-2 w-4 h-4" />
-                </Link>
+        {/* Background decoration */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-6xl opacity-20 pointer-events-none">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500 rounded-full filter blur-[128px]"></div>
+          <div className="absolute top-40 right-10 w-72 h-72 bg-purple-500 rounded-full filter blur-[128px]"></div>
+        </div>
+      </section>
+
+      {/* What is Tokenization Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-800/30">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
+                What is Real-World Asset Tokenization?
+              </h2>
+              <p className="text-gray-400 mb-6 text-lg">
+                Real-world asset (RWA) tokenization is the process of creating a digital representation 
+                of physical or financial assets on a blockchain. These tokens act as digital certificates 
+                of ownership, creating a bridge between traditional assets and the decentralized economy.
+              </p>
+              <p className="text-gray-400 mb-8">
+                The token reflects the legal rights attached to the underlying asset through an established 
+                structure, such as an SPV, trust, or fund vehicle. This isn't just a technological overlay—it's 
+                a transformation of how assets are issued, managed, and transacted.
+              </p>
+              
+              <div className="space-y-4">
+                {[
+                  "Fractional ownership enables smaller investment amounts",
+                  "24/7 global trading on blockchain networks",
+                  "Smart contracts automate compliance and distributions",
+                  "Immutable records eliminate fraud and disputes"
+                ].map((item, index) => (
+                  <div key={index} className="flex items-start">
+                    <CheckCircle2 className="w-6 h-6 text-green-400 mr-3 flex-shrink-0 mt-0.5" />
+                    <span className="text-gray-300">{item}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Tab Navigation */}
-        <div className="flex gap-2 mb-8 border-b border-gray-700">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'overview'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab('request')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'request'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Request Tokenization
-          </button>
-          {isConnected && (
-            <button
-              onClick={() => setActiveTab('applications')}
-              className={`px-6 py-3 font-medium transition-colors flex items-center gap-2 ${
-                activeTab === 'applications'
-                  ? 'text-blue-400 border-b-2 border-blue-400'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              My Applications
-              {applications.length > 0 && (
-                <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">
-                  {applications.length}
-                </span>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400" />
-            <p className="text-red-400">{error}</p>
-            <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-300">×</button>
-          </div>
-        )}
-
-        {activeTab === 'overview' ? (
-          <>
-            {/* Video Section - What is RWA Tokenization? */}
-            <section className="mb-16">
-              <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-2xl p-6 md:p-8">
-                <div className="grid md:grid-cols-2 gap-8 items-center">
-                  <div>
-                    <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">
-                      What is RWA Tokenization?
-                    </h2>
-                    <p className="text-gray-300 mb-4">
-                      Real World Asset (RWA) tokenization is the process of converting ownership rights 
-                      of physical assets into digital tokens on a blockchain. This enables:
-                    </p>
-                    <ul className="space-y-3 text-gray-400">
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
-                        <span><strong className="text-white">Fractional Ownership</strong> - Divide expensive assets into affordable pieces</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
-                        <span><strong className="text-white">24/7 Liquidity</strong> - Trade assets anytime, anywhere globally</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
-                        <span><strong className="text-white">Transparent Ownership</strong> - Immutable on-chain records</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
-                        <span><strong className="text-white">Automated Compliance</strong> - Built-in KYC and transfer restrictions</span>
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  {/* Video Player */}
-                  <div className="relative rounded-xl overflow-hidden bg-gray-800 aspect-video group">
-                    <video
-                      ref={videoRef}
-                      className="w-full h-full object-cover"
-                      poster="/video/whatisrwa-poster.jpg"
-                      muted={isVideoMuted}
-                      playsInline
-                      onPlay={() => setIsVideoPlaying(true)}
-                      onPause={() => setIsVideoPlaying(false)}
-                      onEnded={() => setIsVideoPlaying(false)}
-                    >
-                      <source src="/video/whatisrwa.mp4" type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                    
-                    {/* Play/Pause Overlay */}
-                    {!isVideoPlaying && (
-                      <div 
-                        className="absolute inset-0 flex items-center justify-center bg-black/40 cursor-pointer"
-                        onClick={toggleVideoPlay}
-                      >
-                        <div className="w-20 h-20 rounded-full bg-blue-600/90 flex items-center justify-center hover:bg-blue-500 transition-colors">
-                          <Play className="w-10 h-10 text-white ml-1" fill="white" />
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Video Controls */}
-                    <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${isVideoPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
-                      <div className="flex items-center justify-between">
-                        <button
-                          onClick={toggleVideoPlay}
-                          className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
-                        >
-                          {isVideoPlaying ? (
-                            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                              <rect x="6" y="4" width="4" height="16" />
-                              <rect x="14" y="4" width="4" height="16" />
-                            </svg>
-                          ) : (
-                            <Play className="w-5 h-5 text-white" fill="white" />
-                          )}
-                        </button>
-                        
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={toggleVideoMute}
-                            className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
-                          >
-                            {isVideoMuted ? (
-                              <VolumeX className="w-5 h-5 text-white" />
-                            ) : (
-                              <Volume2 className="w-5 h-5 text-white" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
+            <div className="relative">
+              <div className="bg-gradient-to-br from-gray-700 to-gray-800 rounded-2xl p-8 border border-gray-600">
+                <h3 className="text-xl font-semibold text-white mb-6">Traditional vs Tokenized</h3>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                      <div className="text-red-400 font-semibold mb-2">Traditional</div>
+                      <div className="text-3xl font-bold text-white">T+2</div>
+                      <div className="text-sm text-gray-400">Settlement</div>
                     </div>
-                    
-                    {/* Video Badge */}
-                    <div className="absolute top-4 left-4">
-                      <span className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-full">
-                        Watch Video
-                      </span>
+                    <div className="text-center p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                      <div className="text-green-400 font-semibold mb-2">Tokenized</div>
+                      <div className="text-3xl font-bold text-white">Instant</div>
+                      <div className="text-sm text-gray-400">Settlement</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                      <div className="text-red-400 font-semibold mb-2">Traditional</div>
+                      <div className="text-3xl font-bold text-white">$100K+</div>
+                      <div className="text-sm text-gray-400">Min Investment</div>
+                    </div>
+                    <div className="text-center p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                      <div className="text-green-400 font-semibold mb-2">Tokenized</div>
+                      <div className="text-3xl font-bold text-white">$100</div>
+                      <div className="text-sm text-gray-400">Min Investment</div>
                     </div>
                   </div>
                 </div>
               </div>
-            </section>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            {/* Benefits Section */}
-            <section className="mb-16">
-              <h2 className="text-2xl font-bold text-white mb-8 text-center">
-                Why Tokenize With Us?
-              </h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {benefits.map((benefit, index) => (
-                  <div
-                    key={index}
-                    className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition"
-                  >
-                    <div className="p-3 bg-blue-500/10 rounded-lg text-blue-400 inline-block mb-4">
-                      {benefit.icon}
-                    </div>
-                    <h3 className="text-lg font-semibold text-white mb-2">{benefit.title}</h3>
-                    <p className="text-gray-400 text-sm">{benefit.description}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
+      {/* Asset Categories Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+              Asset Categories
+            </h2>
+            <p className="text-gray-400 max-w-2xl mx-auto text-lg">
+              From energy infrastructure to real estate, discover the wide range of assets 
+              that can be tokenized on our platform.
+            </p>
+          </div>
 
-            {/* Process Section */}
-            <section className="mb-16">
-              <h2 className="text-2xl font-bold text-white mb-8 text-center">
-                How It Works
-              </h2>
-              <div className="relative">
-                <div className="hidden lg:block absolute top-12 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-green-500"></div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                  {process.map((item, index) => (
-                    <div key={index} className="relative text-center">
-                      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold mx-auto mb-4 relative z-10">
-                          {item.step}
-                        </div>
-                        <h3 className="text-white font-semibold mb-2">{item.title}</h3>
-                        <p className="text-gray-400 text-sm">{item.description}</p>
-                      </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {categories.map((category, index) => (
+              <div 
+                key={index}
+                className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1"
+              >
+                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-r ${category.color} text-white mb-4`}>
+                  {category.icon}
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-3">{category.title}</h3>
+                <p className="text-gray-400 text-sm mb-4">{category.description}</p>
+                <div className="space-y-1">
+                  {category.examples.map((example, i) => (
+                    <div key={i} className="flex items-center text-xs text-gray-500">
+                      <ChevronRight className="w-3 h-3 mr-1 text-blue-400" />
+                      {example}
                     </div>
                   ))}
                 </div>
               </div>
-            </section>
+            ))}
+          </div>
+        </div>
+      </section>
 
-            {/* Pricing Section */}
-            <section className="mb-16">
-              <h2 className="text-2xl font-bold text-white mb-8 text-center">
-                Simple, Transparent Pricing
-              </h2>
-              <div className="max-w-3xl mx-auto">
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-                  {/* Base Package */}
-                  <div className="flex items-center justify-between py-4 border-b border-gray-700">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-blue-500/10 rounded-lg">
-                        <Coins className="w-6 h-6 text-blue-400" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold">Base Package</h3>
-                        <p className="text-gray-400 text-sm">Project NFT + ERC-3643 Security Token</p>
-                      </div>
-                    </div>
-                    <div className="text-2xl font-bold text-white">${FEES.base}</div>
+      {/* Advantages Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-800/30">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+              Why Tokenize on Blockchain?
+            </h2>
+            <p className="text-gray-400 max-w-2xl mx-auto text-lg">
+              Blockchain technology brings unprecedented benefits to asset management, 
+              trading, and ownership.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {advantages.map((advantage, index) => (
+              <div 
+                key={index}
+                className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6 hover:border-blue-500/50 transition-all duration-300"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
+                    {advantage.icon}
                   </div>
-
-                  {/* Escrow Add-on */}
-                  <div className="flex items-center justify-between py-4 border-b border-gray-700">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-green-500/10 rounded-lg">
-                        <Lock className="w-6 h-6 text-green-400" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold">Trade Escrow</h3>
-                        <p className="text-gray-400 text-sm">Secure P2P trading with escrow protection (1% fee on trades)</p>
-                      </div>
-                    </div>
-                    <div className="text-2xl font-bold text-green-400">+${FEES.escrow}</div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-white">{advantage.stat}</div>
+                    <div className="text-xs text-gray-500">{advantage.statLabel}</div>
                   </div>
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">{advantage.title}</h3>
+                <p className="text-gray-400 text-sm">{advantage.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+      {/* What Are You Looking For Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+              What Are You Looking For?
+            </h2>
+            <p className="text-gray-400 max-w-2xl mx-auto text-lg">
+              Whether you're an entrepreneur, established business, or investor, 
+              RWA Experts provides comprehensive support for your tokenization journey.
+            </p>
+          </div>
 
-                  {/* Dividends Add-on */}
-                  <div className="flex items-center justify-between py-4 border-b border-gray-700">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-yellow-500/10 rounded-lg">
-                        <TrendingUp className="w-6 h-6 text-yellow-400" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold">Dividend Distributor</h3>
-                        <p className="text-gray-400 text-sm">Automatic revenue distribution (0.5% fee on claims)</p>
-                      </div>
-                    </div>
-                    <div className="text-2xl font-bold text-yellow-400">+${FEES.dividend}</div>
-                  </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Technical Solution */}
+            <div className="bg-gradient-to-br from-blue-900/30 to-blue-800/20 border border-blue-500/30 rounded-2xl p-6 hover:border-blue-400/50 transition-all duration-300 group">
+              <div className="p-3 bg-blue-500/20 rounded-xl text-blue-400 inline-block mb-4 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-3">Technical Solution</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Need smart contracts, token infrastructure, or blockchain integration? 
+                Our technical team builds secure, compliant solutions tailored to your needs.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                  Smart contract development
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                  ERC-3643 compliant tokens
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                  Custom blockchain solutions
+                </li>
+              </ul>
+            </div>
 
-                  {/* Examples */}
-                  <div className="mt-6 p-4 bg-gray-700/50 rounded-lg">
-                    <h4 className="text-white font-medium mb-3">Example Pricing:</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Base only:</span>
-                        <span className="text-white font-medium">${FEES.base}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Base + Escrow:</span>
-                        <span className="text-white font-medium">${FEES.base + FEES.escrow}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Base + Dividends:</span>
-                        <span className="text-white font-medium">${FEES.base + FEES.dividend}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Full package:</span>
-                        <span className="text-green-400 font-medium">${FEES.base + FEES.escrow + FEES.dividend}</span>
-                      </div>
-                    </div>
-                  </div>
+            {/* Marketing & GTM */}
+            <div className="bg-gradient-to-br from-purple-900/30 to-purple-800/20 border border-purple-500/30 rounded-2xl p-6 hover:border-purple-400/50 transition-all duration-300 group">
+              <div className="p-3 bg-purple-500/20 rounded-xl text-purple-400 inline-block mb-4 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-3">Marketing & GTM</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Ready to launch but need market visibility? We help you reach the right 
+                investors and build a compelling go-to-market strategy.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  Investor outreach campaigns
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  Token launch strategy
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  Community building
+                </li>
+              </ul>
+            </div>
 
-                  <p className="text-center text-gray-500 text-sm mt-4">
-                    + 0.1% platform fee on all token transfers and trades
-                  </p>
+            {/* Partnerships & Contacts */}
+            <div className="bg-gradient-to-br from-green-900/30 to-green-800/20 border border-green-500/30 rounded-2xl p-6 hover:border-green-400/50 transition-all duration-300 group">
+              <div className="p-3 bg-green-500/20 rounded-xl text-green-400 inline-block mb-4 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-3">Partnerships & Contacts</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Looking to connect with key players in the RWA ecosystem? 
+                We facilitate introductions to partners, exchanges, and service providers.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  Exchange partnerships
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  Custody & legal partners
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  Industry network access
+                </li>
+              </ul>
+            </div>
+
+            {/* Team Building */}
+            <div className="bg-gradient-to-br from-orange-900/30 to-orange-800/20 border border-orange-500/30 rounded-2xl p-6 hover:border-orange-400/50 transition-all duration-300 group">
+              <div className="p-3 bg-orange-500/20 rounded-xl text-orange-400 inline-block mb-4 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-3">Team Building</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Need to assemble a team for your tokenization project? 
+                We connect you with vetted blockchain developers, legal experts, and advisors.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-orange-400" />
+                  Blockchain developers
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-orange-400" />
+                  Legal & compliance experts
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-orange-400" />
+                  Advisory board members
+                </li>
+              </ul>
+            </div>
+
+            {/* Funding */}
+            <div className="bg-gradient-to-br from-cyan-900/30 to-cyan-800/20 border border-cyan-500/30 rounded-2xl p-6 hover:border-cyan-400/50 transition-all duration-300 group">
+              <div className="p-3 bg-cyan-500/20 rounded-xl text-cyan-400 inline-block mb-4 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-3">Funding</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Ready to raise capital for your project? Launch a compliant security 
+                token offering and access our global network of verified investors.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                  Security token offerings
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                  Investor introductions
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                  Milestone-based escrow
+                </li>
+              </ul>
+            </div>
+
+            {/* All of the Above */}
+            <div className="bg-gradient-to-br from-pink-900/30 to-pink-800/20 border border-pink-500/30 rounded-2xl p-6 hover:border-pink-400/50 transition-all duration-300 group">
+              <div className="p-3 bg-pink-500/20 rounded-xl text-pink-400 inline-block mb-4 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-3">Full Service Package</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Need comprehensive support? RWA Experts offers end-to-end solutions 
+                combining all services to take your project from idea to launch.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-pink-400" />
+                  Complete project management
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-pink-400" />
+                  Dedicated success manager
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-pink-400" />
+                  Priority support & guidance
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="mt-12 text-center">
+            <p className="text-gray-400 mb-6">
+              Not sure what you need? Let's discuss your project and find the right solution.
+            </p>
+            <Link
+              href="/contact"
+              className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition"
+            >
+              Let's talk <ArrowRight className="ml-2 w-5 h-5" />
+            </Link>
+          </div>
+        </div>
+      </section>
+      {/* Services Navigation */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Our Services
+            </h2>
+            <p className="text-gray-400 max-w-2xl mx-auto">
+              End-to-end tokenization solutions for issuers, investors, and institutions.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Company */}
+            <Link href="/about/company" className="group">
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-blue-500 transition-all duration-300 h-full">
+                <div className="p-3 bg-blue-500/10 rounded-lg text-blue-400 inline-block mb-4">
+                  <Building2 className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-blue-400 transition">
+                  Company
+                </h3>
+                <p className="text-gray-400 text-sm">
+                  Learn about our mission to democratize access to real-world assets through blockchain.
+                </p>
+              </div>
+            </Link>
+
+            {/* Team */}
+            <Link href="/about/team" className="group">
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-purple-500 transition-all duration-300 h-full">
+                <div className="p-3 bg-purple-500/10 rounded-lg text-purple-400 inline-block mb-4">
+                  <Users className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-purple-400 transition">
+                  Team
+                </h3>
+                <p className="text-gray-400 text-sm">
+                  Meet the experts behind our platform—professionals in finance, blockchain, and law.
+                </p>
+              </div>
+            </Link>
+
+            {/* Custom Tokenization */}
+            <Link href="/tokenize" className="group">
+              <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6 hover:border-blue-400 transition-all duration-300 h-full">
+                <div className="p-3 bg-blue-500/20 rounded-lg text-blue-400 inline-block mb-4">
+                  <Coins className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-blue-400 transition">
+                  Want to Tokenize?
+                </h3>
+                <p className="text-gray-400 text-sm mb-3">
+                  Custom token minting for your specific needs. NFTs, security tokens, and more.
+                </p>
+                <div className="text-xs text-blue-400">
+                  Gold KYC Required • Platform fees apply
                 </div>
               </div>
-            </section>
+            </Link>
 
-            {/* Asset Types Section */}
-            <section className="mb-16">
-              <h2 className="text-2xl font-bold text-white mb-8 text-center">
-                What Can You Tokenize?
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {assetTypes.map((asset, index) => (
-                  <div
-                    key={index}
-                    className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex items-center gap-3 hover:border-gray-600 transition"
-                  >
-                    <div className="text-blue-400">{asset.icon}</div>
-                    <span className="text-gray-300 text-sm">{asset.label}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* CTA */}
-            <section className="text-center">
-              <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-2xl p-8">
-                <h2 className="text-2xl font-bold text-white mb-4">
-                  Ready to Tokenize Your Assets?
-                </h2>
-                <p className="text-gray-400 mb-6 max-w-2xl mx-auto">
-                  Submit your tokenization request and our team will guide you through the process.
+            {/* Crowdfunding */}
+            <Link href="/crowdfunding" className="group">
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-green-500 transition-all duration-300 h-full">
+                <div className="p-3 bg-green-500/10 rounded-lg text-green-400 inline-block mb-4">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-green-400 transition">
+                  Crowdfunding
+                </h3>
+                <p className="text-gray-400 text-sm">
+                  Launch or invest in tokenized projects. RWA Experts connects issuers with global investors.
                 </p>
-                {!isConnected ? (
-                  <button
-                    onClick={openConnectModal}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition flex items-center mx-auto cursor-pointer"
-                  >
-                    <Wallet className="mr-2 w-5 h-5" /> Connect Wallet
-                  </button>
-                ) : isGoldOrHigher ? (
-                  <button
-                    onClick={() => setActiveTab('request')}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition flex items-center mx-auto"
-                  >
-                    Submit Request <ArrowRight className="ml-2 w-5 h-5" />
-                  </button>
-                ) : (
-                  <Link
-                    href="/kyc"
-                    className="px-8 py-3 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg transition inline-flex items-center"
-                  >
-                    Complete Gold KYC First <ArrowRight className="ml-2 w-5 h-5" />
-                  </Link>
-                )}
               </div>
-            </section>
-          </>
-        ) : activeTab === 'applications' ? (
-          /* Applications Tab */
-          <section>
+            </Link>
+
+            {/* KYC */}
+            <Link href="/kyc" className="group">
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-yellow-500 transition-all duration-300 h-full">
+                <div className="p-3 bg-yellow-500/10 rounded-lg text-yellow-400 inline-block mb-4">
+                  <FileCheck className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-yellow-400 transition">
+                  Identity (KYC)
+                </h3>
+                <p className="text-gray-400 text-sm">
+                  Verify your identity to access investment opportunities. Compliant with global regulations.
+                </p>
+              </div>
+            </Link>
+
+            {/* Exchange */}
+            <Link href="/exchange" className="group">
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-cyan-500 transition-all duration-300 h-full">
+                <div className="p-3 bg-cyan-500/10 rounded-lg text-cyan-400 inline-block mb-4">
+                  <Repeat className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-cyan-400 transition">
+                  Exchange
+                </h3>
+                <p className="text-gray-400 text-sm">
+                  Trade tokenized assets on our compliant secondary market. Instant settlement, global access.
+                </p>
+              </div>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-900/30 to-purple-900/30">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl font-bold text-white mb-6">
+            Ready to Tokenize Your Assets?
+          </h2>
+          <p className="text-lg text-gray-300 mb-8">
+            Join the $33+ billion tokenized asset market. Whether you're an issuer looking to raise capital 
+            or an investor seeking new opportunities, we're here to help.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             {!isConnected ? (
-              <div className="text-center py-12">
-                <Wallet className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Connect Your Wallet</h3>
-                <p className="text-gray-400 mb-6">Please connect your wallet to view your applications.</p>
-                <button
-                  onClick={openConnectModal}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition cursor-pointer"
-                >
-                  Connect Wallet
-                </button>
-              </div>
-            ) : loadingApplications ? (
-              <div className="text-center py-12">
-                <div className="animate-spin w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p className="text-gray-400">Loading your applications...</p>
-              </div>
-            ) : applications.length === 0 ? (
-              <div className="text-center py-12">
-                <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">No Applications Yet</h3>
-                <p className="text-gray-400 mb-6">You haven't submitted any tokenization requests yet.</p>
-                <button
-                  onClick={() => setActiveTab('request')}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition inline-flex items-center"
-                >
-                  <Plus className="mr-2 w-4 h-4" /> Submit Your First Request
-                </button>
-              </div>
+              <button
+                onClick={openConnectModal}
+                className="px-8 py-4 bg-white text-gray-900 font-semibold rounded-xl hover:bg-gray-100 transition flex items-center cursor-pointer"
+              >
+                <Wallet className="mr-2 w-5 h-5" /> Connect Wallet
+              </button>
             ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold text-white">Your Applications</h2>
-                  <button
-                    onClick={() => setActiveTab('request')}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition inline-flex items-center"
-                  >
-                    <Plus className="mr-2 w-4 h-4" /> New Request
-                  </button>
-                </div>
-                
-                {applications.map((app) => {
-                  const statusConfig = STATUS_CONFIG[app.status] || STATUS_CONFIG.pending;
-                  return (
-                    <div
-                      key={app.id}
-                      className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition"
-                    >
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-white">{app.asset_name}</h3>
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${statusConfig.color}`}>
-                              {statusConfig.icon}
-                              {statusConfig.label}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-4 text-sm text-gray-400">
-                            <span>Type: {app.asset_type.replace('_', ' ')}</span>
-                            <span>Value: {formatCurrency(app.estimated_value)}</span>
-                            <span>Submitted: {formatDate(app.created_at)}</span>
-                          </div>
-                          {/* Add-ons indicators */}
-                          <div className="flex gap-2 mt-2">
-                            {app.needs_escrow && (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-400 text-xs rounded">
-                                <Lock className="w-3 h-3" /> Escrow
-                              </span>
-                            )}
-                            {app.needs_dividends && (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-500/10 text-yellow-400 text-xs rounded">
-                                <TrendingUp className="w-3 h-3" /> Dividends
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-3">
-                          {app.status === 'payment_pending' && (
-                            <Link
-                              href={`/tokenize/pay/${app.id}`}
-                              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition inline-flex items-center"
-                            >
-                              <CreditCard className="mr-2 w-4 h-4" />
-                              Pay ${app.fee_amount}
-                            </Link>
-                          )}
-                          {app.status === 'creation_ready' && (
-                            <Link
-                              href={`/tokenize/create/${app.id}`}
-                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition inline-flex items-center"
-                            >
-                              <Coins className="mr-2 w-4 h-4" />
-                              Create Token
-                            </Link>
-                          )}
-                          <Link
-                            href={`/tokenize/application/${app.id}`}
-                            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition inline-flex items-center"
-                          >
-                            <Eye className="mr-2 w-4 h-4" />
-                            View Details
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <Link 
+                href="/crowdfunding"
+                className="px-8 py-4 bg-white text-gray-900 font-semibold rounded-xl hover:bg-gray-100 transition flex items-center"
+              >
+                Start Now <ArrowRight className="ml-2 w-5 h-5" />
+              </Link>
             )}
-          </section>
-        ) : (
-          /* Request Form Tab */
-          <section>
-            {!isConnected ? (
-              <div className="text-center py-12">
-                <Wallet className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Connect Your Wallet</h3>
-                <p className="text-gray-400 mb-6">Please connect your wallet to submit a tokenization request.</p>
-                <button
-                  onClick={openConnectModal}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition cursor-pointer"
-                >
-                  Connect Wallet
-                </button>
-              </div>
-            ) : !isGoldOrHigher ? (
-              <div className="text-center py-12">
-                <Lock className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Gold KYC Required</h3>
-                <p className="text-gray-400 mb-6">You need Gold tier KYC verification to submit tokenization requests.</p>
-                <Link
-                  href="/kyc"
-                  className="px-6 py-3 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg transition inline-flex items-center"
-                >
-                  Complete KYC <ArrowRight className="ml-2 w-4 h-4" />
-                </Link>
-              </div>
-            ) : submitted ? (
-              <div className="text-center py-12">
-                <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Request Submitted!</h3>
-                <p className="text-gray-400 mb-6">
-                  Thank you for your tokenization request. Our team will review your submission and contact you within 2-3 business days.
-                </p>
-                <div className="flex justify-center gap-4">
-                  <button
-                    onClick={resetForm}
-                    className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition"
-                  >
-                    Submit Another Request
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('applications')}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-                  >
-                    View My Applications
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-                {/* Company Information */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <Building2 className="w-5 h-5 mr-2 text-blue-400" />
-                    Company Information
-                  </h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Company Name *</label>
-                      <input
-                        type="text"
-                        name="companyName"
-                        value={formData.companyName}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="Your Company Ltd."
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Contact Name *</label>
-                      <input
-                        type="text"
-                        name="contactName"
-                        value={formData.contactName}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="John Doe"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Email *</label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="john@company.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Phone</label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="+1 234 567 8900"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm text-gray-400 mb-1">Website</label>
-                      <input
-                        type="url"
-                        name="website"
-                        value={formData.website}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="https://yourcompany.com"
-                      />
-                    </div>
-                  </div>
-                </div>
+            <Link 
+              href="/about/company"
+              className="px-8 py-4 bg-transparent text-white font-semibold rounded-xl hover:bg-white/10 transition border border-white/30"
+            >
+              Learn More
+            </Link>
+          </div>
+        </div>
+      </section>
 
-                {/* Asset Details */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <Package className="w-5 h-5 mr-2 text-purple-400" />
-                    Asset Details
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Asset Name *</label>
-                      <input
-                        type="text"
-                        name="assetName"
-                        value={formData.assetName}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="Manhattan Office Building"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Asset Type *</label>
-                      <select
-                        name="assetType"
-                        value={formData.assetType}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                      >
-                        <option value="">Select asset type...</option>
-                        {assetTypes.map((type) => (
-                          <option key={type.value} value={type.value}>
-                            {type.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Asset Description *</label>
-                      <textarea
-                        name="assetDescription"
-                        value={formData.assetDescription}
-                        onChange={handleChange}
-                        required
-                        rows={4}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none resize-none"
-                        placeholder="Describe the asset you want to tokenize, including its current status, location, and any relevant details..."
-                      />
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">Estimated Value (USD) *</label>
-                        <input
-                          type="text"
-                          name="estimatedValue"
-                          value={formData.estimatedValue}
-                          onChange={handleChange}
-                          required
-                          className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                          placeholder="$1,000,000"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">Use Case *</label>
-                        <select
-                          name="useCase"
-                          value={formData.useCase}
-                          onChange={handleChange}
-                          required
-                          className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        >
-                          <option value="">Select use case...</option>
-                          {useCases.map((uc) => (
-                            <option key={uc.value} value={uc.value}>
-                              {uc.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Document Upload Section - Adapts to Asset Type */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-semibold text-white flex items-center">
-                      <Upload className="w-5 h-5 mr-2 text-cyan-400" />
-                      Required Documents
-                    </h3>
-                    {formData.assetType && (
-                      <span className="text-xs">
-                        {hasAllRequiredDocuments(formData.assetType, documents) 
-                          ? <span className="text-green-400 flex items-center gap-1">
-                              <CheckCircle2 className="w-4 h-4" /> All required documents uploaded
-                            </span>
-                          : <span className="text-amber-400">
-                              {getMissingDocuments(formData.assetType, documents).length} required documents missing
-                            </span>
-                        }
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-gray-500 text-sm mb-4">
-                    Upload documents to support your tokenization request. Requirements vary by asset type.
-                  </p>
-
-                  {!formData.assetType ? (
-                    <div className="bg-gray-700/50 rounded-lg p-8 text-center">
-                      <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                      <p className="text-gray-400">Please select an asset type first to see required documents</p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Required Documents Checklist */}
-                      <div className="bg-gray-700/50 rounded-lg p-4 mb-4">
-                        <h4 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
-                          <Shield className="w-4 h-4 text-blue-400" />
-                          Required for {getAssetTypeLabel(formData.assetType)}:
-                        </h4>
-                        <div className="grid gap-2">
-                          {getRequiredDocuments(formData.assetType).map(doc => {
-                            const isUploaded = documents.some(d => d.documentType === doc.value);
-                            return (
-                              <div 
-                                key={doc.value}
-                                className={`flex items-center gap-2 text-sm p-2 rounded transition-colors ${
-                                  isUploaded 
-                                    ? 'bg-green-500/10 text-green-400' 
-                                    : 'bg-gray-700/50 text-gray-400'
-                                }`}
-                              >
-                                {isUploaded ? (
-                                  <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-                                ) : (
-                                  <Circle className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                                )}
-                                <span className="flex-1">{doc.label}</span>
-                                {isUploaded && (
-                                  <span className="text-xs text-gray-500 truncate max-w-[150px]">
-                                    {documents.find(d => d.documentType === doc.value)?.name}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Document Upload Controls */}
-                      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-                        <select
-                          value={selectedDocType}
-                          onChange={(e) => setSelectedDocType(e.target.value)}
-                          className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        >
-                          <option value="">Select document type...</option>
-                          <optgroup label="Required Documents">
-                            {getRequiredDocuments(formData.assetType).map(doc => (
-                              <option 
-                                key={doc.value} 
-                                value={doc.value}
-                                disabled={documents.some(d => d.documentType === doc.value)}
-                              >
-                                {doc.label} {documents.some(d => d.documentType === doc.value) ? '✓' : ''}
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label="Optional Documents">
-                            {getOptionalDocuments(formData.assetType).map(doc => (
-                              <option key={doc.value} value={doc.value}>
-                                {doc.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                        
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          onChange={handleFileUpload}
-                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
-                          className="hidden"
-                          id="document-upload"
-                        />
-                        <label
-                          htmlFor="document-upload"
-                          className={`px-4 py-2 rounded-lg font-medium transition inline-flex items-center justify-center cursor-pointer ${
-                            !selectedDocType || uploadingDocument
-                              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                              : 'bg-cyan-600 hover:bg-cyan-700 text-white'
-                          }`}
-                        >
-                          {uploadingDocument ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Uploading...
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="w-4 h-4 mr-2" />
-                              Upload
-                            </>
-                          )}
-                        </label>
-                      </div>
-
-                      {/* Upload error */}
-                      {uploadError && (
-                        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 text-red-400" />
-                          <p className="text-red-400 text-sm">{uploadError}</p>
-                        </div>
-                      )}
-
-                      {/* Uploaded Documents List */}
-                      {documents.length > 0 && (
-                        <div className="space-y-2 mb-4">
-                          <h4 className="text-sm font-medium text-gray-300">Uploaded Documents ({documents.length})</h4>
-                          {documents.map((doc) => {
-                            const docType = DOCUMENT_TYPES.find(d => d.value === doc.documentType);
-                            const isRequired = docType && !docType.optional;
-                            
-                            return (
-                              <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-700/50 border border-gray-600 rounded-lg">
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  {getFileIcon(doc.type)}
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-white text-sm truncate">{doc.name}</p>
-                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                      <span className={isRequired ? 'text-blue-400' : 'text-gray-500'}>
-                                        {docType?.label || doc.documentType}
-                                      </span>
-                                      <span>•</span>
-                                      <span>{formatFileSize(doc.size)}</span>
-                                      {isRequired && (
-                                        <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs">
-                                          Required
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <a
-                                    href={doc.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-2 text-gray-400 hover:text-white transition"
-                                    title="View document"
-                                  >
-                                    <Eye className="w-4 h-4" />
-                                  </a>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeDocument(doc.id)}
-                                    className="p-2 text-red-400 hover:text-red-300 transition"
-                                    title="Remove document"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Optional Documents Info */}
-                      {getOptionalDocuments(formData.assetType).length > 0 && (
-                        <div className="text-xs text-gray-500 p-3 bg-gray-700/30 rounded-lg">
-                          <span className="text-gray-400 font-medium">Optional documents: </span>
-                          {getOptionalDocuments(formData.assetType).map(d => d.label).join(', ')}
-                        </div>
-                      )}
-
-                      {/* Empty state */}
-                      {documents.length === 0 && (
-                        <div className="text-center py-6 border-2 border-dashed border-gray-600 rounded-lg mt-4">
-                          <FileText className="w-10 h-10 text-gray-600 mx-auto mb-2" />
-                          <p className="text-gray-500 text-sm">No documents uploaded yet</p>
-                          <p className="text-gray-600 text-xs mt-1">
-                            Supported formats: PDF, DOC, DOCX, JPG, PNG, WEBP (max 10MB)
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Optional Add-ons */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-2 flex items-center">
-                    <Key className="w-5 h-5 mr-2 text-green-400" />
-                    Optional Add-ons
-                  </h3>
-                  <p className="text-gray-500 text-sm mb-4">
-                    Enhance your tokenization with additional features
-                  </p>
-                  
-                  <div className="space-y-4">
-                    {/* Escrow Option */}
-                    <label className="flex items-start gap-4 p-4 bg-gray-700/50 border border-gray-600 rounded-xl cursor-pointer hover:border-gray-500 transition">
-                      <input
-                        type="checkbox"
-                        name="needsEscrow"
-                        checked={formData.needsEscrow}
-                        onChange={handleChange}
-                        className="mt-1 w-5 h-5 rounded border-gray-500 text-green-600 focus:ring-green-500"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Lock className="w-5 h-5 text-green-400" />
-                            <span className="text-white font-medium">Trade Escrow</span>
-                          </div>
-                          <span className="text-green-400 font-semibold">+${FEES.escrow}</span>
-                        </div>
-                        <p className="text-gray-400 text-sm mt-1">
-                          Enable secure P2P trading with escrow protection. Buyers deposit funds, sellers deposit tokens, 
-                          and the escrow ensures atomic swaps.
-                        </p>
-                        <ul className="mt-2 space-y-1">
-                          <li className="flex items-center text-xs text-gray-400">
-                            <CheckCircle2 className="w-3 h-3 text-green-400 mr-1.5" />
-                            Secure fund holding
-                          </li>
-                          <li className="flex items-center text-xs text-gray-400">
-                            <CheckCircle2 className="w-3 h-3 text-green-400 mr-1.5" />
-                            Atomic token/payment swap
-                          </li>
-                          <li className="flex items-center text-xs text-gray-400">
-                            <CheckCircle2 className="w-3 h-3 text-green-400 mr-1.5" />
-                            1% fee on escrow trades
-                          </li>
-                        </ul>
-                      </div>
-                    </label>
-
-                    {/* Dividends Option */}
-                    <label className="flex items-start gap-4 p-4 bg-gray-700/50 border border-gray-600 rounded-xl cursor-pointer hover:border-gray-500 transition">
-                      <input
-                        type="checkbox"
-                        name="needsDividends"
-                        checked={formData.needsDividends}
-                        onChange={handleChange}
-                        className="mt-1 w-5 h-5 rounded border-gray-500 text-yellow-600 focus:ring-yellow-500"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <TrendingUp className="w-5 h-5 text-yellow-400" />
-                            <span className="text-white font-medium">Dividend Distributor</span>
-                          </div>
-                          <span className="text-yellow-400 font-semibold">+${FEES.dividend}</span>
-                        </div>
-                        <p className="text-gray-400 text-sm mt-1">
-                          Automatically distribute revenue, profits, or dividends to all token holders 
-                          proportionally based on their holdings.
-                        </p>
-                        <ul className="mt-2 space-y-1">
-                          <li className="flex items-center text-xs text-gray-400">
-                            <CheckCircle2 className="w-3 h-3 text-yellow-400 mr-1.5" />
-                            Proportional distribution via snapshots
-                          </li>
-                          <li className="flex items-center text-xs text-gray-400">
-                            <CheckCircle2 className="w-3 h-3 text-yellow-400 mr-1.5" />
-                            Multiple payment tokens supported
-                          </li>
-                          <li className="flex items-center text-xs text-gray-400">
-                            <CheckCircle2 className="w-3 h-3 text-yellow-400 mr-1.5" />
-                            0.5% fee on dividend claims
-                          </li>
-                        </ul>
-                      </div>
-                    </label>
-                  </div>
-
-                  {/* Info box */}
-                  <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-start gap-2">
-                    <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-blue-300">
-                      Every tokenization includes a <strong>Project NFT</strong> (representing your asset) and 
-                      <strong> ERC-3643 security tokens</strong> (for fractional ownership). Add-ons can be 
-                      enabled now or added later after token creation.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Token Configuration (Optional) */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <Coins className="w-5 h-5 mr-2 text-yellow-400" />
-                    Token Details (Optional)
-                  </h3>
-                  <p className="text-gray-500 text-sm mb-4">
-                    If you have preferences for your token, fill these in. Otherwise, our team will help you decide.
-                  </p>
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Token Name</label>
-                      <input
-                        type="text"
-                        name="tokenName"
-                        value={formData.tokenName}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="My Asset Token"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Token Symbol</label>
-                      <input
-                        type="text"
-                        name="tokenSymbol"
-                        value={formData.tokenSymbol}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="MAT"
-                        maxLength={6}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Total Supply</label>
-                      <input
-                        type="text"
-                        name="totalSupply"
-                        value={formData.totalSupply}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                        placeholder="1,000,000"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Information */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <FileText className="w-5 h-5 mr-2 text-orange-400" />
-                    Additional Information
-                  </h3>
-                  <textarea
-                    name="additionalInfo"
-                    value={formData.additionalInfo}
-                    onChange={handleChange}
-                    rows={4}
-                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none resize-none"
-                    placeholder="Any additional information, questions, or specific requirements..."
-                  />
-                </div>
-
-                {/* Fee Summary */}
-                <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-xl p-6 mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <CreditCard className="w-5 h-5 mr-2 text-green-400" />
-                    Fee Summary
-                  </h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Base Fee (Project NFT + ERC-3643 Token)</span>
-                      <span className="text-white font-medium">${FEES.base}</span>
-                    </div>
-                    {formData.needsEscrow && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Trade Escrow</span>
-                        <span className="text-green-400 font-medium">+${FEES.escrow}</span>
-                      </div>
-                    )}
-                    {formData.needsDividends && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Dividend Distributor</span>
-                        <span className="text-yellow-400 font-medium">+${FEES.dividend}</span>
-                      </div>
-                    )}
-                    
-                    <div className="pt-2 mt-2 border-t border-green-500/30 flex justify-between">
-                      <span className="text-gray-300 font-medium">Total Due After Approval</span>
-                      <span className="text-green-400 font-bold text-lg">
-                        ${calculateFee()} USDC
-                      </span>
-                    </div>
-                    
-                    {/* Ongoing fees section */}
-                    <div className="pt-3 mt-3 border-t border-gray-600">
-                      <p className="text-gray-500 text-xs mb-2">Ongoing platform fees:</p>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Platform fee (on all trades)</span>
-                          <span className="text-gray-400">0.1%</span>
-                        </div>
-                        {formData.needsEscrow && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-500">Escrow fee (on escrow trades)</span>
-                            <span className="text-gray-400">1%</span>
-                          </div>
-                        )}
-                        {formData.needsDividends && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-500">Dividend fee (on claims)</span>
-                            <span className="text-gray-400">0.5%</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Wallet Info */}
-                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 mb-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <Wallet className="w-4 h-4" />
-                      <span className="text-sm">Connected Wallet:</span>
-                    </div>
-                    <span className="text-white font-mono text-sm">
-                      {address?.slice(0, 6)}...{address?.slice(-4)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={submitting || (formData.assetType && !hasAllRequiredDocuments(formData.assetType, documents))}
-                  className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="mr-2 w-5 h-5" />
-                      Submit Tokenization Request
-                    </>
-                  )}
-                </button>
-
-                {formData.assetType && !hasAllRequiredDocuments(formData.assetType, documents) && (
-                  <p className="text-center text-amber-400 text-sm mt-3">
-                    Please upload all required documents before submitting
-                  </p>
-                )}
-
-                <p className="text-center text-gray-500 text-sm mt-4">
-                  By submitting, you agree to our terms and conditions. Our team will review your request 
-                  and contact you within 2-3 business days.
-                </p>
-              </form>
-            )}
-          </section>
-        )}
-      </main>
+      {/* Testnet Notice */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4">
+          <div className="flex items-center">
+            <span className="text-yellow-500 font-semibold mr-2">⚠️ Testnet:</span>
+            <span className="text-yellow-200">
+              This application is running on Polygon Amoy testnet. Get test MATIC from the{' '}
+              <a
+                href="https://faucet.polygon.technology/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-yellow-100"
+              >
+                Polygon Faucet
+              </a>
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
