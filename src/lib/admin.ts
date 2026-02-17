@@ -1,5 +1,6 @@
 // src/lib/admin.ts
 import { getSupabaseAdmin } from './supabase';
+import { NextRequest, NextResponse } from 'next/server';
 
 export type AdminRole = 'super_admin' | 'admin' | null;
 
@@ -42,6 +43,37 @@ export async function getAdminRole(walletAddress: string): Promise<AdminRole> {
     console.error('Failed to get admin role:', err);
     return null;
   }
+}
+
+export async function validateAdminAccess(request: NextRequest): Promise<{
+  isValid: boolean;
+  walletAddress: string | null;
+  error?: NextResponse;
+}> {
+  const walletAddress = request.headers.get('x-wallet-address');
+  
+  if (!walletAddress) {
+    return {
+      isValid: false,
+      walletAddress: null,
+      error: NextResponse.json({ error: 'Wallet address required' }, { status: 401 }),
+    };
+  }
+
+  const adminCheck = await isAdmin(walletAddress);
+  
+  if (!adminCheck) {
+    return {
+      isValid: false,
+      walletAddress,
+      error: NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 403 }),
+    };
+  }
+
+  return {
+    isValid: true,
+    walletAddress,
+  };
 }
 
 // Check if wallet is any type of admin
