@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
@@ -24,12 +24,16 @@ import {
   Repeat,
   CheckCircle2,
   ArrowRight,
-  Wallet
+  Wallet,
+  Play, Volume2, VolumeX
 } from 'lucide-react';
 
 export default function LandingPage() {
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(true);
 
   const categories = [
     {
@@ -127,6 +131,24 @@ export default function LandingPage() {
     { value: "$30T", label: "Projected Potential" },
     { value: "24/7", label: "Global Trading" }
   ];
+
+  const toggleVideoPlay = () => {
+  if (videoRef.current) {
+    if (isVideoPlaying) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play();
+    }
+    setIsVideoPlaying(!isVideoPlaying);
+  }
+};
+
+const toggleVideoMute = () => {
+  if (videoRef.current) {
+    videoRef.current.muted = !isVideoMuted;
+    setIsVideoMuted(!isVideoMuted);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gray-900">
