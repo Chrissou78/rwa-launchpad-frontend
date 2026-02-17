@@ -268,6 +268,109 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Video Section - What is RWA Tokenization? */}
+      <section className="mb-16">
+        <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-2xl p-6 md:p-8">
+          <div className="grid md:grid-cols-2 gap-8 items-center">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">
+                What is RWA Tokenization?
+              </h2>
+              <p className="text-gray-300 mb-4">
+                Real World Asset (RWA) tokenization is the process of converting ownership rights 
+                of physical assets into digital tokens on a blockchain. This enables:
+              </p>
+              <ul className="space-y-3 text-gray-400">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-white">Fractional Ownership</strong> - Divide expensive assets into affordable pieces</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-white">24/7 Liquidity</strong> - Trade assets anytime, anywhere globally</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-white">Transparent Ownership</strong> - Immutable on-chain records</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                  <span><strong className="text-white">Automated Compliance</strong> - Built-in KYC and transfer restrictions</span>
+                </li>
+              </ul>
+            </div>
+            
+            {/* Video Player */}
+            <div className="relative rounded-xl overflow-hidden bg-gray-800 aspect-video group">
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover"
+                poster="/video/whatisrwa-poster.jpg"
+                muted={isVideoMuted}
+                playsInline
+                onPlay={() => setIsVideoPlaying(true)}
+                onPause={() => setIsVideoPlaying(false)}
+                onEnded={() => setIsVideoPlaying(false)}
+              >
+                <source src="/video/whatisrwa.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+              
+              {/* Play/Pause Overlay */}
+              {!isVideoPlaying && (
+                <div 
+                  className="absolute inset-0 flex items-center justify-center bg-black/40 cursor-pointer"
+                  onClick={toggleVideoPlay}
+                >
+                  <div className="w-20 h-20 rounded-full bg-blue-600/90 flex items-center justify-center hover:bg-blue-500 transition-colors">
+                    <Play className="w-10 h-10 text-white ml-1" fill="white" />
+                  </div>
+                </div>
+              )}
+              
+              {/* Video Controls */}
+              <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${isVideoPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={toggleVideoPlay}
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                  >
+                    {isVideoPlaying ? (
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <rect x="6" y="4" width="4" height="16" />
+                        <rect x="14" y="4" width="4" height="16" />
+                      </svg>
+                    ) : (
+                      <Play className="w-5 h-5 text-white" fill="white" />
+                    )}
+                  </button>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={toggleVideoMute}
+                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                    >
+                      {isVideoMuted ? (
+                        <VolumeX className="w-5 h-5 text-white" />
+                      ) : (
+                        <Volume2 className="w-5 h-5 text-white" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Video Badge */}
+              <div className="absolute top-4 left-4">
+                <span className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-full">
+                  Watch Video
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Asset Categories Section */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
