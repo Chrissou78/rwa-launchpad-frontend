@@ -1,12 +1,8 @@
 // src/app/api/trade/deals/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
 
 // Stage transition notifications mapping
 const STAGE_NOTIFICATIONS: Record<string, {
@@ -77,6 +73,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = getSupabaseAdmin();
     const walletAddress = request.headers.get('x-wallet-address');
     if (!walletAddress) {
       return NextResponse.json({ error: 'Wallet address required' }, { status: 401 });
