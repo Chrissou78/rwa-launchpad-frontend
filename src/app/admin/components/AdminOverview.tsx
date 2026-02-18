@@ -41,12 +41,14 @@ export default function AdminOverview({
   disputeStats,
   setActiveTab 
 }: AdminOverviewProps) {
-  const activeProjects = projects.filter(p => p.status === 2).length;
-  const fundedProjects = projects.filter(p => p.status >= 3 && p.status <= 5).length;
-  const totalRaised = projects.reduce((sum, p) => sum + p.totalRaised, 0n);
-
+  const safeProjects = projects || [];
+  const safeKycStats = kycStats || { total: 0, pending: 0, approved: 0, rejected: 0 };
+  
+  const activeProjects = safeProjects.filter(p => p.status === 2).length;
+  const fundedProjects = safeProjects.filter(p => p.status >= 3 && p.status <= 5).length;
+  const totalRaised = safeProjects.reduce((sum, p) => sum + (p.totalRaised || 0n), 0n);
   // Calculate urgent items count
-  const urgentItems = (kycStats.pending || 0) + 
+  const urgentItems = (safeKycStats.pending || 0) + 
     (tokenizationStats?.pending || 0) + 
     (disputeStats?.pending || 0) + 
     (disputeStats?.inArbitration || 0);
@@ -102,15 +104,15 @@ export default function AdminOverview({
             <div className="p-2 bg-yellow-500/20 rounded-lg">
               <UserCheck className="w-5 h-5 text-yellow-400" />
             </div>
-            {kycStats.pending > 0 && (
+            {safeKycStats.pending > 0 && (
               <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full animate-pulse">
-                {kycStats.pending} pending
+                {safeKycStats.pending} pending
               </span>
             )}
           </div>
           <p className="text-gray-400 text-sm">KYC Applications</p>
-          <p className="text-3xl font-bold text-white">{kycStats.total || (kycStats.pending + kycStats.approved + kycStats.rejected)}</p>
-          <p className="text-sm text-yellow-400 mt-1">{kycStats.pending} awaiting review</p>
+          <p className="text-3xl font-bold text-white">{safeKycStats.total || (safeKycStats.pending + safeKycStats.approved + safeKycStats.rejected)}</p>
+          <p className="text-sm text-yellow-400 mt-1">{safeKycStats.pending} awaiting review</p>
         </div>
 
         <div
@@ -434,14 +436,14 @@ export default function AdminOverview({
             </button>
           </div>
           
-          {projects.length === 0 ? (
+          {safeProjects.length === 0 ? (
             <div className="text-center py-8">
               <FolderKanban className="w-10 h-10 text-gray-600 mx-auto mb-2" />
               <p className="text-gray-500">No projects yet</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {projects.slice(0, 4).map(project => (
+              {safeProjects.slice(0, 4).map(project => (
                 <div key={project.id} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition">
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium truncate">{project.name || `Project #${project.id}`}</p>
