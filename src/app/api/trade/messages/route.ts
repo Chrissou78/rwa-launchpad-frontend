@@ -1,13 +1,8 @@
 // src/app/api/trade/messages/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { notifyNewMessage } from '@/lib/notifications/send';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
 
 // GET - Fetch messages for a deal
 export async function GET(request: NextRequest) {

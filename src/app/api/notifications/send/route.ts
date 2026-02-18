@@ -1,13 +1,8 @@
 // src/app/api/notifications/send/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { emailTemplates, sendEmail } from '@/lib/notifications/email-templates';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
 
 type NotificationType = 
   | 'trade_update'

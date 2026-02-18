@@ -1,13 +1,8 @@
 // src/app/api/trade/deals/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { notifyTradeInvitation } from '@/lib/notifications/send';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
 
 // GET - List deals for a user
 export async function GET(request: NextRequest) {
