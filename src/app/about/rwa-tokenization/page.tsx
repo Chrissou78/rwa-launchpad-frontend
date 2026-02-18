@@ -3,7 +3,6 @@
 
 import React, { useState, useRef } from 'react';
 import Link from 'next/link';
-import Header from '@/components/Header';
 import {
   CheckCircle2,
   ArrowRight,
@@ -95,8 +94,6 @@ export default function RWATokenizationPage() {
 
   return (
     <div className="min-h-screen bg-gray-900">
-      <Header />
-
       {/* Hero Section */}
       <section className="relative pt-16 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">

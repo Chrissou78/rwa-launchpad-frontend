@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 const aboutTabs = [
   { id: 'company', label: 'Our Company', href: '/about/company', icon: '🏢' },
   { id: 'team', label: 'Our Team', href: '/about/team', icon: '👥' },
+  { id: 'rwa-tokenization', label: 'What is RWA Tokenization?', href: '/about/rwa-tokenization', icon: '🪙' },
 ];
 
 export default function AboutLayout({
@@ -42,21 +43,24 @@ export default function AboutLayout({
 
       {/* Tab Navigation */}
       <div className="container mx-auto px-4">
-        <div className="flex justify-center gap-4 -mt-4 mb-8">
+        <div className="flex flex-wrap justify-center gap-3 -mt-4 mb-8">
           {aboutTabs.map((tab) => {
             const isActive = pathname === tab.href;
             return (
               <Link
                 key={tab.id}
                 href={tab.href}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium transition-all text-sm md:text-base ${
                   isActive
                     ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/25'
                     : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 hover:text-white'
                 }`}
               >
                 <span>{tab.icon}</span>
-                {tab.label}
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">
+                  {tab.id === 'rwa-tokenization' ? 'RWA' : tab.label.split(' ')[1]}
+                </span>
               </Link>
             );
           })}
