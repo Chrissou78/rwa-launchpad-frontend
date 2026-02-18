@@ -307,6 +307,7 @@ export default function Header() {
   const aboutItems = [
     { href: '/about/company', label: 'Company', description: 'Our mission and vision' },
     { href: '/about/team', label: 'Team', description: 'Meet our experts' },
+    { href: '/about/rwa-tokenization', label: 'What is RWA Tokenization?', description: 'Learn about asset tokenization' },
     { href: '/contact', label: 'Contact', description: 'Get in touch with us' },
   ];
 
