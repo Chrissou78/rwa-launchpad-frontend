@@ -148,7 +148,25 @@ export default function LandingPage() {
           <div className="absolute top-40 right-10 w-72 h-72 bg-purple-500 rounded-full filter blur-[128px]"></div>
         </div>
       </section>
-
+      {/* What is RWA Tokenization - Simplified */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
+            What is Real-World Asset Tokenization?
+          </h2>
+          <p className="text-gray-400 text-lg mb-8">
+            Real-world asset (RWA) tokenization is the process of creating a digital representation 
+            of physical or financial assets on a blockchain, enabling fractional ownership, 
+            24/7 trading, and automated compliance.
+          </p>
+          <Link 
+            href="/about/rwa-tokenization"
+            className="inline-flex items-center px-6 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 font-semibold rounded-xl hover:bg-blue-500/20 transition"
+          >
+            Learn More <ArrowRight className="ml-2 w-5 h-5" />
+          </Link>
+        </div>
+      </section>
       {/* Why Tokenize Section - MOVED UP */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-800/30">
         <div className="max-w-7xl mx-auto">
@@ -184,27 +202,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      {/* What is RWA Tokenization - Simplified */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
-            What is Real-World Asset Tokenization?
-          </h2>
-          <p className="text-gray-400 text-lg mb-8">
-            Real-world asset (RWA) tokenization is the process of creating a digital representation 
-            of physical or financial assets on a blockchain, enabling fractional ownership, 
-            24/7 trading, and automated compliance.
-          </p>
-          <Link 
-            href="/about/rwa-tokenization"
-            className="inline-flex items-center px-6 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 font-semibold rounded-xl hover:bg-blue-500/20 transition"
-          >
-            Learn More <ArrowRight className="ml-2 w-5 h-5" />
-          </Link>
-        </div>
-      </section>
-
       {/* Want to Tokenize Your Assets - NEW SECTION */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-900/30 to-purple-900/30">
         <div className="max-w-4xl mx-auto text-center">
