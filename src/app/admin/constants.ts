@@ -104,13 +104,16 @@ export type AdminTab =
   | 'overview' 
   | 'projects' 
   | 'tokenization'
+  | 'trade'
+  | 'disputes'
   | 'offchain' 
   | 'kyc' 
   | 'identity' 
   | 'contracts' 
   | 'factory' 
-  | 'users' 
+  | 'users'
   | 'settings';
+
 
 export interface Project {
   id: number;
@@ -237,4 +240,30 @@ export interface TokenizationDocument {
   url: string;
   mimeType: string;
   size: number;
+}
+
+// =============================================================================
+// TRADE STATS INTERFACE
+// =============================================================================
+
+export interface TradeStats {
+  total: number;
+  active: number;
+  completed: number;
+  disputed: number;
+  totalVolume: number;
+  pendingVolume: number;
+}
+
+// =============================================================================
+// DISPUTE STATS INTERFACE
+// =============================================================================
+
+export interface DisputeStats {
+  total: number;
+  pending: number;
+  inMediation: number;
+  inArbitration: number;
+  resolved: number;
+  totalValue: number;
 }
