@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 // POST - Upload document
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin();
     const walletAddress = request.headers.get('x-wallet-address');
     if (!walletAddress) {
       return NextResponse.json({ error: 'Wallet address required' }, { status: 401 });

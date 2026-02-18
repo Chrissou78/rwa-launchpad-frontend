@@ -7,6 +7,7 @@ import { notifyTradeInvitation } from '@/lib/notifications/send';
 // GET - List deals for a user
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin();
     const walletAddress = request.headers.get('x-wallet-address');
     if (!walletAddress) {
       return NextResponse.json({ error: 'Wallet address required' }, { status: 401 });

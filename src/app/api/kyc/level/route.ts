@@ -6,6 +6,7 @@ import { KYCLevel, KYC_TRADE_LIMITS, KYC_LEVEL_INFO } from '@/lib/trade/kyc-auth
 // GET - Get KYC level for a wallet
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin(); 
     const { searchParams } = new URL(request.url);
     const walletAddress = searchParams.get('wallet');
 

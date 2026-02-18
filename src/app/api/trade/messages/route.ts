@@ -7,6 +7,7 @@ import { notifyNewMessage } from '@/lib/notifications/send';
 // GET - Fetch messages for a deal
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin();
     const walletAddress = request.headers.get('x-wallet-address');
     if (!walletAddress) {
       return NextResponse.json({ error: 'Wallet address required' }, { status: 401 });
