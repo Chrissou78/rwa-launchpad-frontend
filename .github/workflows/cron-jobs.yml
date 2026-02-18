@@ -1,0 +1,28 @@
+name: Scheduled Cron Jobs
+
+on:
+  schedule:
+    # Deadline reminders - every 4 hours
+    - cron: '0 */4 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  deadline-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Deadline Reminders
+        run: |
+          curl -X POST "${{ secrets.APP_URL }}/api/cron/deadlines" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
+
+  # Run digest separately at 8 AM UTC
+  daily-digest:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 8 * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Trigger Daily Digest
+        run: |
+          curl -X POST "${{ secrets.APP_URL }}/api/cron/digest" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
