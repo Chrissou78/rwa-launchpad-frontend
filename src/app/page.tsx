@@ -1,6 +1,7 @@
-﻿'use client';
+﻿// src/app/page.tsx
+'use client';
 
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
@@ -25,59 +26,17 @@ import {
   CheckCircle2,
   ArrowRight,
   Wallet,
-  Play, Pause, Volume2, VolumeX
 } from 'lucide-react';
 
 export default function LandingPage() {
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [isVideoMuted, setIsVideoMuted] = useState(true);
 
-  const categories = [
-    {
-      icon: <Zap className="w-10 h-10" />,
-      title: "Energy",
-      description: "Tokenize renewable energy projects, solar farms, wind turbines, and energy credits. Enable fractional investment in sustainable infrastructure.",
-      examples: ["Solar farm equity", "Wind turbine shares", "Renewable energy credits", "Carbon offset tokens"],
-      color: "from-yellow-500 to-orange-500"
-    },
-    {
-      icon: <Building2 className="w-10 h-10" />,
-      title: "Real Estate",
-      description: "Transform property ownership through fractional tokenization. From luxury apartments to commercial buildings, make real estate accessible to everyone.",
-      examples: ["Commercial buildings", "Residential properties", "REITs", "Land development"],
-      color: "from-blue-500 to-cyan-500"
-    },
-    {
-      icon: <Briefcase className="w-10 h-10" />,
-      title: "Business Trade",
-      description: "Tokenize trade receivables, invoices, and supply chain assets. Unlock working capital and streamline international trade finance.",
-      examples: ["Trade receivables", "Invoice financing", "Supply chain assets", "Export credits"],
-      color: "from-purple-500 to-pink-500"
-    },
-    {
-      icon: <TrendingUp className="w-10 h-10" />,
-      title: "Fund Raising",
-      description: "Launch compliant security token offerings (STOs) to raise capital globally. Access institutional and retail investors through regulated channels.",
-      examples: ["Equity tokens", "Debt instruments", "Revenue sharing", "Convertible notes"],
-      color: "from-green-500 to-emerald-500"
-    },
-    {
-      icon: <Coins className="w-10 h-10" />,
-      title: "Dividends Distribution",
-      description: "Automate dividend and profit distributions through smart contracts. Ensure transparent, instant payments to all token holders worldwide.",
-      examples: ["Automated payouts", "Profit sharing", "Rental income", "Interest payments"],
-      color: "from-indigo-500 to-blue-500"
-    },
-    {
-      icon: <Package className="w-10 h-10" />,
-      title: "Commodities",
-      description: "Digitize ownership of precious metals, agricultural products, and raw materials. Trade commodities 24/7 with instant settlement.",
-      examples: ["Gold & silver", "Agricultural products", "Oil & gas", "Industrial metals"],
-      color: "from-amber-500 to-yellow-500"
-    }
+  const marketStats = [
+    { value: "$33B+", label: "Tokenized RWA Market" },
+    { value: "300%+", label: "3-Year Growth" },
+    { value: "$30T", label: "Projected Potential" },
+    { value: "24/7", label: "Global Trading" }
   ];
 
   const advantages = [
@@ -125,31 +84,6 @@ export default function LandingPage() {
     }
   ];
 
-  const marketStats = [
-    { value: "$33B+", label: "Tokenized RWA Market" },
-    { value: "300%+", label: "3-Year Growth" },
-    { value: "$30T", label: "Projected Potential" },
-    { value: "24/7", label: "Global Trading" }
-  ];
-
-  const toggleVideoPlay = () => {
-  if (videoRef.current) {
-    if (isVideoPlaying) {
-      videoRef.current.pause();
-    } else {
-      videoRef.current.play();
-    }
-    setIsVideoPlaying(!isVideoPlaying);
-  }
-};
-
-const toggleVideoMute = () => {
-  if (videoRef.current) {
-    videoRef.current.muted = !isVideoMuted;
-    setIsVideoMuted(!isVideoMuted);
-  }
-};
-
   return (
     <div className="min-h-screen bg-gray-900">
       <Header />
@@ -190,15 +124,9 @@ const toggleVideoMute = () => {
                 href="/crowdfunding"
                 className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition flex items-center"
               >
-                Launch Crowdfunding <ArrowRight className="ml-2 w-5 h-5" />
+                Browse Projects <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
             )}
-            <Link 
-              href="/tokenize"
-              className="px-8 py-4 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition border border-white/20"
-            >
-              Custom Tokenization
-            </Link>
           </div>
 
           {/* Market Stats */}
@@ -221,209 +149,12 @@ const toggleVideoMute = () => {
         </div>
       </section>
 
-      {/* What is Tokenization Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-800/30">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
-                What is Real-World Asset Tokenization?
-              </h2>
-              <p className="text-gray-400 mb-6 text-lg">
-                Real-world asset (RWA) tokenization is the process of creating a digital representation 
-                of physical or financial assets on a blockchain. These tokens act as digital certificates 
-                of ownership, creating a bridge between traditional assets and the decentralized economy.
-              </p>
-              <p className="text-gray-400 mb-8">
-                The token reflects the legal rights attached to the underlying asset through an established 
-                structure, such as an SPV, trust, or fund vehicle. This isn't just a technological overlay—it's 
-                a transformation of how assets are issued, managed, and transacted.
-              </p>
-              
-              <div className="space-y-4">
-                {[
-                  "Fractional ownership enables smaller investment amounts",
-                  "24/7 global trading on blockchain networks",
-                  "Smart contracts automate compliance and distributions",
-                  "Immutable records eliminate fraud and disputes"
-                ].map((item, index) => (
-                  <div key={index} className="flex items-start">
-                    <CheckCircle2 className="w-6 h-6 text-green-400 mr-3 flex-shrink-0 mt-0.5" />
-                    <span className="text-gray-300">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="bg-gradient-to-br from-gray-700 to-gray-800 rounded-2xl p-8 border border-gray-600">
-                <h3 className="text-xl font-semibold text-white mb-6">Traditional vs Tokenized</h3>
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-                      <div className="text-red-400 font-semibold mb-2">Traditional</div>
-                      <div className="text-3xl font-bold text-white">T+2</div>
-                      <div className="text-sm text-gray-400">Settlement</div>
-                    </div>
-                    <div className="text-center p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-                      <div className="text-green-400 font-semibold mb-2">Tokenized</div>
-                      <div className="text-3xl font-bold text-white">Instant</div>
-                      <div className="text-sm text-gray-400">Settlement</div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-                      <div className="text-red-400 font-semibold mb-2">Traditional</div>
-                      <div className="text-3xl font-bold text-white">$100K+</div>
-                      <div className="text-sm text-gray-400">Min Investment</div>
-                    </div>
-                    <div className="text-center p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-                      <div className="text-green-400 font-semibold mb-2">Tokenized</div>
-                      <div className="text-3xl font-bold text-white">$100</div>
-                      <div className="text-sm text-gray-400">Min Investment</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Video Section - What is RWA Tokenization? */}
-      <section className="py-16 md:py-24 bg-gradient-to-b from-gray-900 to-black">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Section Header */}
-          <div className="text-center mb-12">
-            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 mb-4">
-              <Play className="h-4 w-4 mr-2" />
-              Video Explainer
-            </span>
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              What is RWA Tokenization?
-            </h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-              Learn how real-world assets are transformed into digital tokens on the blockchain
-            </p>
-          </div>
-
-          {/* Video Container - Centered and Constrained */}
-          <div className="max-w-4xl mx-auto">
-            <div className="relative aspect-video rounded-2xl overflow-hidden bg-gray-800 shadow-2xl shadow-blue-500/10 border border-gray-700/50">
-              <video
-                ref={videoRef}
-                className="absolute inset-0 w-full h-full object-cover"
-                src="/video/whatisrwa.mp4"
-                poster="/video/whatisrwa-poster.jpg"
-                muted={isVideoMuted}
-                playsInline
-                onPlay={() => setIsVideoPlaying(true)}
-                onPause={() => setIsVideoPlaying(false)}
-                onEnded={() => setIsVideoPlaying(false)}
-              />
-              
-              {/* Play Overlay */}
-              {!isVideoPlaying && (
-                <div 
-                  className="absolute inset-0 flex items-center justify-center bg-black/40 cursor-pointer transition-opacity hover:bg-black/30"
-                  onClick={toggleVideoPlay}
-                >
-                  <div className="w-20 h-20 rounded-full bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/50 transition-transform hover:scale-110">
-                    <Play className="h-8 w-8 text-white ml-1" fill="white" />
-                  </div>
-                </div>
-              )}
-
-              {/* Video Controls */}
-              <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${isVideoPlaying ? 'opacity-0 hover:opacity-100' : 'opacity-100'}`}>
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={toggleVideoPlay}
-                    className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-                  >
-                    {isVideoPlaying ? (
-                      <Pause className="h-5 w-5 text-white" />
-                    ) : (
-                      <Play className="h-5 w-5 text-white ml-0.5" />
-                    )}
-                  </button>
-                  <button
-                    onClick={toggleVideoMute}
-                    className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-                  >
-                    {isVideoMuted ? (
-                      <VolumeX className="h-5 w-5 text-white" />
-                    ) : (
-                      <Volume2 className="h-5 w-5 text-white" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Key Points Below Video */}
-          <div className="max-w-4xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50 text-center">
-              <div className="text-2xl font-bold text-blue-400 mb-1">2 min</div>
-              <div className="text-sm text-gray-400">Quick Overview</div>
-            </div>
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50 text-center">
-              <div className="text-2xl font-bold text-green-400 mb-1">Simple</div>
-              <div className="text-sm text-gray-400">Easy to Understand</div>
-            </div>
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50 text-center">
-              <div className="text-2xl font-bold text-purple-400 mb-1">Complete</div>
-              <div className="text-sm text-gray-400">Full Process Explained</div>
-            </div>
-          </div>
-        </div>
-      </section>
-      
-      {/* Asset Categories Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Asset Categories
-            </h2>
-            <p className="text-gray-400 max-w-2xl mx-auto text-lg">
-              From energy infrastructure to real estate, discover the wide range of assets 
-              that can be tokenized on our platform.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {categories.map((category, index) => (
-              <div 
-                key={index}
-                className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1"
-              >
-                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-r ${category.color} text-white mb-4`}>
-                  {category.icon}
-                </div>
-                <h3 className="text-xl font-semibold text-white mb-3">{category.title}</h3>
-                <p className="text-gray-400 text-sm mb-4">{category.description}</p>
-                <div className="space-y-1">
-                  {category.examples.map((example, i) => (
-                    <div key={i} className="flex items-center text-xs text-gray-500">
-                      <ChevronRight className="w-3 h-3 mr-1 text-blue-400" />
-                      {example}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Advantages Section */}
+      {/* Why Tokenize Section - MOVED UP */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-800/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Why Tokenize on Blockchain?
+              Why Tokenize?
             </h2>
             <p className="text-gray-400 max-w-2xl mx-auto text-lg">
               Blockchain technology brings unprecedented benefits to asset management, 
@@ -453,6 +184,50 @@ const toggleVideoMute = () => {
           </div>
         </div>
       </section>
+
+      {/* What is RWA Tokenization - Simplified */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
+            What is Real-World Asset Tokenization?
+          </h2>
+          <p className="text-gray-400 text-lg mb-8">
+            Real-world asset (RWA) tokenization is the process of creating a digital representation 
+            of physical or financial assets on a blockchain, enabling fractional ownership, 
+            24/7 trading, and automated compliance.
+          </p>
+          <Link 
+            href="/about/rwa-tokenization"
+            className="inline-flex items-center px-6 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 font-semibold rounded-xl hover:bg-blue-500/20 transition"
+          >
+            Learn More <ArrowRight className="ml-2 w-5 h-5" />
+          </Link>
+        </div>
+      </section>
+
+      {/* Want to Tokenize Your Assets - NEW SECTION */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-900/30 to-purple-900/30">
+        <div className="max-w-4xl mx-auto text-center">
+          <div className="inline-flex items-center px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded-full text-purple-400 text-sm mb-6">
+            <Coins className="w-4 h-4 mr-2" />
+            Asset Tokenization
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
+            Want to Tokenize Your Assets?
+          </h2>
+          <p className="text-gray-400 text-lg mb-8">
+            Transform your real estate, commodities, energy projects, or financial instruments 
+            into digital tokens. Access global investors and unlock liquidity.
+          </p>
+          <Link 
+            href="/tokenize"
+            className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition"
+          >
+            Start Tokenizing <ArrowRight className="ml-2 w-5 h-5" />
+          </Link>
+        </div>
+      </section>
+
       {/* What Are You Looking For Section */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
@@ -646,13 +421,14 @@ const toggleVideoMute = () => {
               href="/contact"
               className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition"
             >
-              Let's talk <ArrowRight className="ml-2 w-5 h-5" />
+              Let's Talk <ArrowRight className="ml-2 w-5 h-5" />
             </Link>
           </div>
         </div>
       </section>
+
       {/* Services Navigation */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-800/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-white mb-4">
@@ -701,10 +477,10 @@ const toggleVideoMute = () => {
                   <Coins className="w-6 h-6" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-blue-400 transition">
-                  Want to Tokenize?
+                  Tokenize Assets
                 </h3>
                 <p className="text-gray-400 text-sm mb-3">
-                  Custom token minting for your specific needs. NFTs, security tokens, and more.
+                  Custom token minting for your specific needs. Security tokens, NFTs, and more.
                 </p>
                 <div className="text-xs text-blue-400">
                   Gold KYC Required • Platform fees apply
@@ -761,10 +537,10 @@ const toggleVideoMute = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-900/30 to-purple-900/30">
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-6">
-            Ready to Tokenize Your Assets?
+            Ready to Get Started?
           </h2>
           <p className="text-lg text-gray-300 mb-8">
             Join the $33+ billion tokenized asset market. Whether you're an issuer looking to raise capital 
@@ -783,7 +559,7 @@ const toggleVideoMute = () => {
                 href="/crowdfunding"
                 className="px-8 py-4 bg-white text-gray-900 font-semibold rounded-xl hover:bg-gray-100 transition flex items-center"
               >
-                Start Now <ArrowRight className="ml-2 w-5 h-5" />
+                Browse Projects <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
             )}
             <Link 

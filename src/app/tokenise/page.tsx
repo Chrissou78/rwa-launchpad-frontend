@@ -21,6 +21,7 @@ import {
   Zap,
   Users,
   BarChart3,
+  ChevronRight,
   Lock,
   Send,
   AlertCircle,
@@ -960,24 +961,132 @@ export default function TokenisePage() {
               </div>
             </section>
 
-            {/* Asset Types Section */}
-            <section className="mb-16">
-              <h2 className="text-2xl font-bold text-white mb-8 text-center">
-                What Can You Tokenize?
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {assetTypes.map((asset, index) => (
-                  <div
-                    key={index}
-                    className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex items-center gap-3 hover:border-gray-600 transition"
-                  >
-                    <div className="text-blue-400">{asset.icon}</div>
-                    <span className="text-gray-300 text-sm">{asset.label}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
+            {/* Asset Categories Section */}
+              <section className="mb-16">
+                <h2 className="text-2xl font-bold text-white mb-4 text-center">
+                  What Can You Tokenize?
+                </h2>
+                <p className="text-gray-400 max-w-2xl mx-auto text-center mb-8">
+                  From energy infrastructure to real estate, discover the wide range of assets 
+                  that can be tokenized on our platform.
+                </p>
 
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Energy */}
+                  <div className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1">
+                    <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white mb-4">
+                      <Zap className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-3">Energy</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Tokenize renewable energy projects, solar farms, wind turbines, and energy credits. Enable fractional investment in sustainable infrastructure.
+                    </p>
+                    <div className="space-y-1">
+                      {["Solar farm equity", "Wind turbine shares", "Renewable energy credits", "Carbon offset tokens"].map((example, i) => (
+                        <div key={i} className="flex items-center text-xs text-gray-500">
+                          <ChevronRight className="w-3 h-3 mr-1 text-yellow-400" />
+                          {example}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Real Estate */}
+                  <div className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1">
+                    <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white mb-4">
+                      <Building2 className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-3">Real Estate</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Transform property ownership through fractional tokenization. From luxury apartments to commercial buildings, make real estate accessible to everyone.
+                    </p>
+                    <div className="space-y-1">
+                      {["Commercial buildings", "Residential properties", "REITs", "Land development"].map((example, i) => (
+                        <div key={i} className="flex items-center text-xs text-gray-500">
+                          <ChevronRight className="w-3 h-3 mr-1 text-blue-400" />
+                          {example}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Business Trade */}
+                  <div className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1">
+                    <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white mb-4">
+                      <Briefcase className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-3">Business Trade</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Tokenize trade receivables, invoices, and supply chain assets. Unlock working capital and streamline international trade finance.
+                    </p>
+                    <div className="space-y-1">
+                      {["Trade receivables", "Invoice financing", "Supply chain assets", "Export credits"].map((example, i) => (
+                        <div key={i} className="flex items-center text-xs text-gray-500">
+                          <ChevronRight className="w-3 h-3 mr-1 text-purple-400" />
+                          {example}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Fund Raising */}
+                  <div className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1">
+                    <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white mb-4">
+                      <TrendingUp className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-3">Fund Raising</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Launch compliant security token offerings (STOs) to raise capital globally. Access institutional and retail investors through regulated channels.
+                    </p>
+                    <div className="space-y-1">
+                      {["Equity tokens", "Debt instruments", "Revenue sharing", "Convertible notes"].map((example, i) => (
+                        <div key={i} className="flex items-center text-xs text-gray-500">
+                          <ChevronRight className="w-3 h-3 mr-1 text-green-400" />
+                          {example}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Dividends Distribution */}
+                  <div className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1">
+                    <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-500 text-white mb-4">
+                      <Coins className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-3">Dividends Distribution</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Automate dividend and profit distributions through smart contracts. Ensure transparent, instant payments to all token holders worldwide.
+                    </p>
+                    <div className="space-y-1">
+                      {["Automated payouts", "Profit sharing", "Rental income", "Interest payments"].map((example, i) => (
+                        <div key={i} className="flex items-center text-xs text-gray-500">
+                          <ChevronRight className="w-3 h-3 mr-1 text-indigo-400" />
+                          {example}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Commodities */}
+                  <div className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:border-gray-500 transition-all duration-300 hover:-translate-y-1">
+                    <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-white mb-4">
+                      <Package className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-3">Commodities</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Digitize ownership of precious metals, agricultural products, and raw materials. Trade commodities 24/7 with instant settlement.
+                    </p>
+                    <div className="space-y-1">
+                      {["Gold & silver", "Agricultural products", "Oil & gas", "Industrial metals"].map((example, i) => (
+                        <div key={i} className="flex items-center text-xs text-gray-500">
+                          <ChevronRight className="w-3 h-3 mr-1 text-amber-400" />
+                          {example}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
             {/* CTA */}
             <section className="text-center">
               <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-2xl p-8">
