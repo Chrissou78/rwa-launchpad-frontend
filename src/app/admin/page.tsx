@@ -42,10 +42,10 @@ export default function AdminOverview({
   disputeStats,
   setActiveTab 
 }: AdminOverviewProps) {
-  const activeProjects = projects.filter(p => p.status === 2).length;
-  const fundedProjects = projects.filter(p => p.status >= 3 && p.status <= 5).length;
-  const totalRaised = projects.reduce((sum, p) => sum + p.totalRaised, 0n);
-
+  const safeProjects = projects || [];
+  const activeProjects = safeProjects.filter(p => p.status === 2).length;
+  const fundedProjects = safeProjects.filter(p => p.status >= 3 && p.status <= 5).length;
+  const totalRaised = safeProjects.reduce((sum, p) => sum + p.totalRaised, 0n);
   // Calculate urgent items count
   const urgentItems = (kycStats.pending || 0) + 
     (tokenizationStats?.pending || 0) + 
