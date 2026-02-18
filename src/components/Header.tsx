@@ -2,6 +2,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { ConnectButton } from './ConnectButton';
 import { useAccount } from 'wagmi';
@@ -335,10 +336,15 @@ export default function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-2xl">🏢</span>
+            <Image 
+              src="/logoRWA.png" 
+              alt="RWA Experts" 
+              width={50}
+              height={50}
+              className="object-contain"
+            />
             <span className="text-xl font-bold text-white">RWA Experts</span>
           </Link>
-
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
             <DropdownMenu 
