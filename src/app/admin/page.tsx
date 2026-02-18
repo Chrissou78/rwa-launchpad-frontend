@@ -1,8 +1,8 @@
 // src/app/admin/components/AdminOverview.tsx
 'use client';
 
-import { Project, AdminTab, KYCStats, TokenizationStats, TradeStats, DisputeStats, STATUS_COLORS, STATUS_NAMES } from '../constants';
-import { formatUSD } from '../helpers';
+import { Project, AdminTab, KYCStats, TokenizationStats, TradeStats, DisputeStats, STATUS_COLORS, STATUS_NAMES } from './constants';
+import { formatUSD } from './helpers';
 import {
   FolderKanban,
   DollarSign,
