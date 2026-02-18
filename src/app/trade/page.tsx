@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
 import Link from 'next/link';
 import {
@@ -413,6 +414,7 @@ export default function TradePage() {
 
   return (
     <main className="min-h-screen bg-gray-900">
+      <Header />
       {/* Hero Section */}
       <section className="relative py-16 md:py-24 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-blue-900/20 to-transparent" />
