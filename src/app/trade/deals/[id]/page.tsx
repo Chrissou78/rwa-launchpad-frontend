@@ -1,4 +1,4 @@
-Copy// src/app/trade/deals/[id]/page.tsx
+// src/app/trade/deals/[id]/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
