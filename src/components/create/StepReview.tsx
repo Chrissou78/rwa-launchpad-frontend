@@ -555,7 +555,7 @@ export default function StepReview({ data, uploadedUrls, onNext, onBack }: StepR
           <p className="text-red-400 font-medium">Before You Deploy</p>
           <ul className="text-sm text-red-400/80 mt-1 space-y-1">
             <li>• Token configuration, milestone structure, and funding target are permanent</li>
-            <li>• Deploying will require gas fees on Polygon Amoy</li>
+            <li>• Deploying will require gas fees on Avalanche Fuji</li>
             <li>• Make sure all legal documents and business plan are accurate</li>
             {isLocalCurrency && (
               <li>• Exchange rate ({data.exchangeRate.toFixed(4)} {data.localCurrency}/USD) was captured at {exchangeRateDate}</li>

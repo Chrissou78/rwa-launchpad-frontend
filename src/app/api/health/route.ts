@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
 
 export async function GET() {
   let blockchainConnected = false;
@@ -10,7 +10,7 @@ export async function GET() {
 
   try {
     const client = createPublicClient({
-      chain: polygonAmoy,
+      chain: avalancheFuji,
       transport: http(RPC_URL),
     });
     const block = await client.getBlockNumber();

@@ -1,7 +1,7 @@
 // src/app/api/admin/projects/[id]/activate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createWalletClient, createPublicClient, http } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI } from '@/config/abis';
@@ -27,13 +27,13 @@ export async function POST(
     
     const walletClient = createWalletClient({
       account,
-      chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      chain: avalancheFuji,
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
     });
 
     const publicClient = createPublicClient({
-      chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      chain: avalancheFuji,
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
     });
 
     // Update status to Active (2)

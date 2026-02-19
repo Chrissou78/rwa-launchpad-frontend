@@ -4,12 +4,12 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, Address } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { RWAEscrowVaultABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+  chain: avalancheFuji,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
 });
 
 const MILESTONE_STATUS: Record<number, { label: string; color: string }> = {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useAccount, useConnect, useDisconnect, useChainId, useReconnect } from 'wagmi';
-import { polygonAmoy } from '@/config/wagmi';
+import { avalancheFuji } from '@/config/wagmi';
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 
 // Wallet icons
@@ -261,7 +261,7 @@ export function ConnectButton() {
   };
 
   if (isConnected && address) {
-    const isWrongNetwork = chainId !== polygonAmoy.id;
+    const isWrongNetwork = chainId !== avalancheFuji.id;
     
     return (
       <div className="flex items-center gap-3">
@@ -273,7 +273,7 @@ export function ConnectButton() {
         <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2">
           <div className="w-2 h-2 bg-green-500 rounded-full" />
           <span className="text-gray-300 text-sm hidden sm:inline">
-            {polygonAmoy.name}
+            {avalancheFuji.name}
           </span>
           <button
             onClick={handleCopyAddress}

@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, formatUnits, parseUnits, formatEther, Address } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import Header from '@/components/Header';
 import StripeInvestment from '@/components/invest/StripeInvestment';
@@ -26,8 +26,8 @@ import {
 // ============================================================================
 
 const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+  chain: avalancheFuji,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
 });
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';

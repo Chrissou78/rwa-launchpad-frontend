@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createWalletClient, createPublicClient, http, parseUnits } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
@@ -58,8 +58,8 @@ const OffChainInvestmentManagerABI = [
 ] as const;
 
 const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+  chain: avalancheFuji,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
 });
 
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
@@ -109,8 +109,8 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     const account = privateKeyToAccount(VERIFIER_PRIVATE_KEY);
     const walletClient = createWalletClient({
       account,
-      chain: polygonAmoy,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      chain: avalancheFuji,
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
     });
 
     // Step 1: Create investment and mint tokens

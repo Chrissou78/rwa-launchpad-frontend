@@ -5,14 +5,14 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createPublicClient, http } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import Header from '@/components/Header';
 import { CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+  chain: avalancheFuji,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
 });
 
 interface ProjectMetadata {

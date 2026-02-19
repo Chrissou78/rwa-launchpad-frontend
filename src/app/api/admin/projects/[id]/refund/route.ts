@@ -1,7 +1,7 @@
 // src/app/api/admin/projects/[id]/refund/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createWalletClient, createPublicClient, http } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
@@ -26,16 +26,16 @@ export async function POST(
     }
 
     const account = privateKeyToAccount(process.env.VERIFIER_PRIVATE_KEY as `0x${string}`);
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
     
     const walletClient = createWalletClient({
       account,
-      chain: polygonAmoy,
+      chain: avalancheFuji,
       transport: http(rpcUrl),
     });
 
     const publicClient = createPublicClient({
-      chain: polygonAmoy,
+      chain: avalancheFuji,
       transport: http(rpcUrl),
     });
 

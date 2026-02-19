@@ -587,7 +587,7 @@ export const SUPPORTED_CURRENCIES: Record<PaymentCurrency, {
     decimals: 6,
     contractAddress: {
       1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // Ethereum Mainnet
-      137: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // Polygon
+      43114: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // A
       42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum
     },
     icon: '/icons/usdc.svg',
@@ -598,7 +598,7 @@ export const SUPPORTED_CURRENCIES: Record<PaymentCurrency, {
     decimals: 6,
     contractAddress: {
       1: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-      137: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+      43114: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
       42161: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
     },
     icon: '/icons/usdt.svg',
@@ -616,7 +616,7 @@ export const SUPPORTED_CURRENCIES: Record<PaymentCurrency, {
     decimals: 8,
     contractAddress: {
       1: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
-      137: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6',
+      43114: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6',
       42161: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f',
     },
     icon: '/icons/wbtc.svg',

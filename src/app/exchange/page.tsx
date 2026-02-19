@@ -4,14 +4,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, formatUnits, parseUnits } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import Header from '@/components/Header';
 import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI, RWASecurityExchangeABI, ERC20ABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+  chain: avalancheFuji,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
 });
 
 const EXCHANGE_ADDRESS = (CONTRACTS as any).RWASecurityExchange as `0x${string}` || '0x0000000000000000000000000000000000000000' as `0x${string}`;
@@ -42,20 +42,17 @@ const MEXC_CONFIG = {
     { symbol: 'DAIUSDT', base: 'DAI', quote: 'USDT', displaySymbol: 'DAI/USDT', pricePrecision: 4, qtyPrecision: 2, minQty: 1 },
     { symbol: 'AAVEUSDT', base: 'AAVE', quote: 'USDT', displaySymbol: 'AAVE/USDT', pricePrecision: 2, qtyPrecision: 3, minQty: 0.01 },
   ],
-  // Polygon token addresses (bridged versions)
-  TOKENS: {
-    USDT: { address: '0x0C40Be98eCCe493086b6aC2e46aFd4aF9e065C38', decimals: 6 },
-    USDC: { address: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', decimals: 6 },
-    POL: { address: ZERO_ADDRESS, decimals: 18, isNative: true },
-    ETH: { address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', decimals: 18 },  // WETH on Polygon
-    BTC: { address: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6', decimals: 8 },   // WBTC on Polygon
-    SOL: { address: '0x7DfF46370e9eA5f0Bad3C4E29711aD50062EA7A4', decimals: 18 },  // SOL on Polygon
-    BNB: { address: '0x3BA4c387f786bFEE076A58914F5Bd38d668B42c3', decimals: 18 },  // BNB on Polygon
-    AVAX: { address: '0x2C89bbc92BD86F8075d1DEcc58C7F4E0107f286b', decimals: 18 }, // AVAX on Polygon
-    DAI: { address: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', decimals: 18 },  // DAI on Polygon
-    AAVE: { address: '0xD6DF932A45C0f255f85145f286eA0b292B21C90B', decimals: 18 }, // AAVE on Polygon
-  } as Record<string, { address: string; decimals: number; isNative?: boolean }>,
-  REFRESH_INTERVAL: 2000,
+  // Avalanche Fuji testnet token addresses
+TOKENS: {
+  AVAX: { address: ZERO_ADDRESS, decimals: 18, isNative: true },
+  USDC: { address: '0x5425890298aed601595a70AB815c96711a31Bc65', decimals: 6 },
+  USDT: { address: '0x134Dc38AE8C853D1aa2103d5047591acDAA16682', decimals: 6 },
+  WAVAX: { address: '0xd00ae08403B9bbb9124bB305C09058E32C39A48c', decimals: 18 }, // Wrapped AVAX
+  WETH: { address: '0x86d67c3D38D2bCeE722E601025C25a575021c6EA', decimals: 18 },  // WETH on Fuji
+  LINK: { address: '0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846', decimals: 18 },  // Chainlink on Fuji
+  DAI: { address: '0xFc7215C9498Fc12b22Bc0ed335871Db4315f03d3', decimals: 18 },   // DAI on Fuji
+} as Record<string, { address: string; decimals: number; isNative?: boolean }>,
+REFRESH_INTERVAL: 2000,
 };
 
 const TOKEN_ICONS: Record<string, string> = {

@@ -337,7 +337,7 @@ export default function DebugKYCPage() {
       });
 
       log(`TX SENT! Hash: ${hash}`);
-      log(`View: https://amoy.polygonscan.com/tx/${hash}`);
+      log(`View: https://testnet.snowtrace.io//tx/${hash}`);
       
       log('Waiting for confirmation...');
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -479,7 +479,7 @@ export default function DebugKYCPage() {
       });
 
       log(`TX SENT! Hash: ${hash}`);
-      log(`View: https://amoy.polygonscan.com/tx/${hash}`);
+      log(`View: https://testnet.snowtrace.io//tx/${hash}`);
       
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       log(`TX Status: ${receipt?.status === 'success' ? 'SUCCESS ✓' : 'FAILED ✗'}`);
@@ -543,7 +543,7 @@ export default function DebugKYCPage() {
       });
 
       log(`TX SENT! Hash: ${hash}`);
-      log(`View: https://amoy.polygonscan.com/tx/${hash}`);
+      log(`View: https://testnet.snowtrace.io//tx/${hash}`);
       
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       log(`TX Status: ${receipt?.status === 'success' ? 'SUCCESS ✓' : 'FAILED ✗'}`);

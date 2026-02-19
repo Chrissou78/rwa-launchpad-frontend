@@ -2,11 +2,10 @@ import { EXPLORER_URL, CONTRACTS } from '@/config/contracts';
 
 export default function CompanyPage() {
   const milestones = [
-    { year: '2024 Q1', title: 'Foundation', description: 'RWA Launchpad was founded with a vision to democratize real-world asset investments.' },
-    { year: '2024 Q2', title: 'Development', description: 'Core smart contracts developed and audited for security and compliance.' },
-    { year: '2024 Q3', title: 'Testnet Launch', description: 'Platform launched on Polygon Amoy testnet for community testing.' },
-    { year: '2024 Q4', title: 'Mainnet Preparation', description: 'Final audits and preparations for mainnet deployment.' },
-    { year: '2025 Q1', title: 'Mainnet Launch', description: 'Full platform launch on Polygon mainnet with first RWA projects.' },
+    { year: '2026 Q1', title: 'Foundation', description: 'RWA Launchpad was founded with a vision to democratize real-world asset investments. Core smart contracts developed and audited for security and compliance.' },
+    { year: '2026 Q2', title: 'Testnet Launch', description: 'Platform launched on Avax Fuji testnet for community testing.' },
+    { year: '2026 Q3', title: 'Mainnet Preparation', description: 'Final audits and preparations for mainnet deployment.' },
+    { year: '2026 Q4', title: 'Mainnet Launch', description: 'Full platform launch on Avalanche mainnet with first RWA projects.' },
   ];
 
   const values = [

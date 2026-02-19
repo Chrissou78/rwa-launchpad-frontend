@@ -346,7 +346,7 @@ export default function CrowdfundingPage() {
             <div className="flex items-center">
               <span className="text-yellow-500 font-semibold mr-2">⚠️ Testnet:</span>
               <span className="text-yellow-200">
-                This application is running on Polygon Amoy testnet. Get test MATIC from the{' '}
+                This application is running on Avalanche Fuji testnet. Get test MATIC from the{' '}
                 <a
                   href="https://faucet.polygon.technology/"
                   target="_blank"

@@ -8,14 +8,14 @@ export const ACCEPTED_PAYMENT_TOKENS = [
   {
     symbol: 'USDC',
     name: 'USD Coin',
-    address: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', // Polygon Amoy USDC
+    address: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', // Avalanche Fuji USDC
     decimals: 6,
     icon: '💵'
   },
   {
     symbol: 'USDT',
     name: 'Tether USD', 
-    address: '0x1dBe87Efd97c84d3a73807399EBbfcfF13Ff578e', // Polygon Amoy USDT
+    address: '0x1dBe87Efd97c84d3a73807399EBbfcfF13Ff578e', // Avalanche Fuji USDT
     decimals: 6,
     icon: '💲'
   }

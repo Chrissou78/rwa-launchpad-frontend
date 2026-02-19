@@ -19,7 +19,7 @@ export const EXCHANGE_CONFIG = {
     return this.MARKUP_PERCENT + this.PLATFORM_FEE_PERCENT;
   },
   
-  // Supported tokens with addresses (Polygon Amoy testnet)
+  // Supported tokens with addresses (Avalanche Fuji testnet)
   TOKENS: {
     USDT: {
       symbol: 'USDT',
@@ -38,14 +38,6 @@ export const EXCHANGE_CONFIG = {
     POL: {
       symbol: 'POL',
       name: 'Polygon',
-      address: '0x0000000000000000000000000000000000001010' as `0x${string}`,
-      decimals: 18,
-      icon: '🟣',
-      isNative: true,
-    },
-    MATIC: {
-      symbol: 'MATIC',
-      name: 'Polygon (Legacy)',
       address: '0x0000000000000000000000000000000000001010' as `0x${string}`,
       decimals: 18,
       icon: '🟣',

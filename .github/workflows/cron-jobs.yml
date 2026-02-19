@@ -2,27 +2,55 @@ name: Scheduled Cron Jobs
 
 on:
   schedule:
-    # Deadline reminders - every 4 hours
     - cron: '0 */4 * * *'
-  workflow_dispatch: # Allow manual trigger
+    - cron: '0 8 * * *'
+  workflow_dispatch:
 
 jobs:
   deadline-reminders:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Deadline Reminders
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST "${{ secrets.APP_URL }}/api/cron/deadlines" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json"
+          echo "Testing URL: ${APP_URL}/api/cron/deadlines"
+          echo "Secret length: ${#CRON_SECRET}"
+          
+          HTTP_RESPONSE=$(curl -s -o response.txt -w "%{http_code}" \
+            -X POST "${APP_URL}/api/cron/deadlines" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json")
+          
+          echo "HTTP Status: $HTTP_RESPONSE"
+          echo "Response body:"
+          cat response.txt
+          
+          if [ "$HTTP_RESPONSE" != "200" ]; then
+            exit 1
+          fi
 
-  # Run digest separately at 8 AM UTC
   daily-digest:
     runs-on: ubuntu-latest
     if: github.event.schedule == '0 8 * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Trigger Daily Digest
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST "${{ secrets.APP_URL }}/api/cron/digest" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json"
+          echo "Testing URL: ${APP_URL}/api/cron/digest"
+          
+          HTTP_RESPONSE=$(curl -s -o response.txt -w "%{http_code}" \
+            -X POST "${APP_URL}/api/cron/digest" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json")
+          
+          echo "HTTP Status: $HTTP_RESPONSE"
+          echo "Response body:"
+          cat response.txt
+          
+          if [ "$HTTP_RESPONSE" != "200" ]; then
+            exit 1
+          fi

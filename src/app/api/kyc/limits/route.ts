@@ -1,7 +1,7 @@
 // src/app/api/kyc/limits/route.ts
 import { NextResponse } from 'next/server';
 import { createPublicClient, http, formatUnits } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
@@ -17,8 +17,8 @@ export async function GET() {
     }
 
     const publicClient = createPublicClient({
-      chain: polygonAmoy,
-      transport: http(process.env.RPC_URL || 'https://rpc-amoy.polygon.technology'),
+      chain: avalancheFuji,
+      transport: http(process.env.RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
     });
 
     const contractAddress = CONTRACTS.KYCManager as `0x${string}`;

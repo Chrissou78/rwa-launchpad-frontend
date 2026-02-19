@@ -571,18 +571,27 @@ export default function LandingPage() {
 
       {/* Testnet Notice */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4">
+        <div className="bg-red-900/50 border border-red-600 rounded-lg p-4">
           <div className="flex items-center">
-            <span className="text-yellow-500 font-semibold mr-2">⚠️ Testnet:</span>
-            <span className="text-yellow-200">
-              This application is running on Polygon Amoy testnet. Get test MATIC from the{' '}
+            <span className="text-red-400 font-semibold mr-2">🔺 Testnet:</span>
+            <span className="text-red-200">
+              This application is running on Avalanche Fuji testnet. Get test AVAX from the{' '}
               <a
-                href="https://faucet.polygon.technology/"
+                href="https://faucet.avax.network/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline hover:text-yellow-100"
+                className="underline hover:text-red-100"
               >
-                Polygon Faucet
+                Avalanche Faucet
+              </a>
+              {' '}or{' '}
+              <a
+                href="https://core.app/tools/testnet-faucet/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-red-100"
+              >
+                Core Faucet
               </a>
             </span>
           </div>

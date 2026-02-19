@@ -371,7 +371,7 @@ export default function AdminUsersManagement() {
                           <Copy className="w-3 h-3" />
                         </button>
                         <a
-                          href={`https://amoy.polygonscan.com/address/${admin.wallet_address}`}
+                          href={`https://testnet.snowtrace.io//address/${admin.wallet_address}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-1 text-gray-500 hover:text-white transition-colors"

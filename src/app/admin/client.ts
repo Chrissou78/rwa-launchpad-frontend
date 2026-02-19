@@ -1,9 +1,9 @@
 // src/app/admin/client.ts
 
 import { createPublicClient, http } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 
 export const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC || 'https://rpc-amoy.polygon.technology'),
+  chain: avalancheFuji,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://avalanche-fuji.g.alchemy.com/v2/IoufBRdGO6MKWC6pxqbZW'),
 });

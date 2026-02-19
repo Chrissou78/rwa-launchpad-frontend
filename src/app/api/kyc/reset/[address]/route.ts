@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, http, getAddress, keccak256, toBytes } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
@@ -59,7 +59,7 @@ export async function POST(
 
     const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
     const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
+    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
 
     if (!VERIFIER_PRIVATE_KEY) {
       return NextResponse.json(
@@ -75,7 +75,7 @@ export async function POST(
 
     // Create clients
     const publicClient = createPublicClient({
-      chain: polygonAmoy,
+      chain: avalancheFuji,
       transport: http(RPC_URL)
     });
 
@@ -84,7 +84,7 @@ export async function POST(
 
     const walletClient = createWalletClient({
       account,
-      chain: polygonAmoy,
+      chain: avalancheFuji,
       transport: http(RPC_URL)
     });
 
@@ -256,10 +256,10 @@ export async function GET(
     }
 
     const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology';
+    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
 
     const publicClient = createPublicClient({
-      chain: polygonAmoy,
+      chain: avalancheFuji,
       transport: http(RPC_URL)
     });
 

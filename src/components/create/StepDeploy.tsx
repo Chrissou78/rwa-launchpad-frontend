@@ -484,7 +484,7 @@ try {
     <div className="space-y-6">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-white mb-2">Deploy Your Project</h2>
-        <p className="text-gray-400">Deploy your ERC-3643 Security Token on Polygon Amoy</p>
+        <p className="text-gray-400">Deploy your ERC-3643 Security Token on Avalanche Fuji</p>
       </div>
 
       {/* Not Connected */}
@@ -499,8 +499,8 @@ try {
             {isLoading ? 'Connecting...' : 'Connect Wallet'}
           </button>
           <p className="text-gray-500 text-sm mt-4">
-            Need testnet POL?{' '}
-            <a href="https://faucet.polygon.technology/" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
+            Need testnet AVAX?{' '}
+            <a href="https://core.app/tools/testnet-faucet" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
               Get from faucet
             </a>
           </p>
@@ -510,7 +510,7 @@ try {
       {/* Wrong Network */}
       {isConnected && isWrongNetwork && (
         <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-6 text-center">
-          <p className="text-orange-400 mb-4">Please switch to Polygon Amoy network</p>
+          <p className="text-orange-400 mb-4">Please switch to Avalanche Fuji network</p>
           <button
             onClick={handleSwitchNetwork}
             className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-black font-medium rounded-lg"
@@ -534,7 +534,7 @@ try {
               <div><span className="text-gray-400">Goal:</span> <span className="text-white">${data.amountToRaise?.toLocaleString()}</span></div>
               <div><span className="text-gray-400">Deadline:</span> <span className="text-white">30 days</span></div>
               <div><span className="text-gray-400">Wallet:</span> <span className="text-white font-mono text-xs">{address?.slice(0, 6)}...{address?.slice(-4)}</span></div>
-              <div><span className="text-gray-400">Network:</span> <span className="text-green-400">Polygon Amoy ✓</span></div>
+              <div><span className="text-gray-400">Network:</span> <span className="text-green-400">Avalanche Fuji ✓</span></div>
             </div>
             {creationFee > 0n && (
               <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
@@ -595,7 +595,7 @@ try {
                 <Step label="Upload metadata to IPFS" done={status !== 'uploading'} active={status === 'uploading'} />
                 <Step label="Confirm in wallet" done={['confirming', 'verifying', 'success'].includes(status)} active={status === 'waitingWallet'} />
                 <Step label="Deploy contracts on-chain" done={['verifying', 'success'].includes(status)} active={status === 'confirming'} />
-                <Step label="Verify on Polygonscan" done={status === 'success'} active={status === 'verifying'} />
+                <Step label="Verify on SnowTrace" done={status === 'success'} active={status === 'verifying'} />
               </div>
               {txHash && (
                 <div className="mt-4 p-3 bg-gray-900 rounded text-sm">
@@ -630,7 +630,7 @@ try {
                   rel="noopener noreferrer" 
                   className="text-purple-400 hover:underline text-sm mt-2 inline-block"
                 >
-                  View NFT on Polygonscan →
+                  View NFT on SnowTrace →
                 </a>
               </div>
 

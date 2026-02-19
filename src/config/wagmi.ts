@@ -3,29 +3,29 @@ import { injected, walletConnect } from 'wagmi/connectors'
 import type { Chain } from 'viem'
 import { CHAIN_ID, EXPLORER_URL } from '@/config/contracts'
 
-// Polygon Amoy Testnet
-export const polygonAmoy: Chain = {
+// Avalanche Fuji Testnet
+export const avalancheFuji: Chain = {
   id: CHAIN_ID,
-  name: CHAIN_ID === 80002 ? 'Polygon Amoy' : CHAIN_ID === 137 ? 'Polygon' : `Chain ${CHAIN_ID}`,
-  nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
+  name: CHAIN_ID === 43113 ? 'Avalanche Fuji' : CHAIN_ID === 43114 ? 'Avalanche C-Chain' : `Chain ${CHAIN_ID}`,
+  nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 },
   rpcUrls: {
     default: { 
-      http: [CHAIN_ID === 80002 
-        ? 'https://rpc-amoy.polygon.technology' 
-        : 'https://polygon-rpc.com'
+      http: [CHAIN_ID === 43113 
+        ? 'https://api.avax-test.network/ext/bc/C/rpc' 
+        : 'https://avax.api.pocket.network'
       ] 
     },
   },
   blockExplorers: {
-    default: { name: 'PolygonScan', url: EXPLORER_URL },
+    default: { name: 'SnowTrace', url: EXPLORER_URL },
   },
-  testnet: CHAIN_ID === 80002,
+  testnet: CHAIN_ID === 43113,
 }
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || ''
 
 export const config = createConfig({
-  chains: [polygonAmoy],
+  chains: [avalancheFuji],
   connectors: [
     injected({ target: 'metaMask' }),
     injected({ target: 'phantom' }),
@@ -45,10 +45,10 @@ export const config = createConfig({
     injected(), // Fallback for other browser wallets
   ],
   transports: {
-    [polygonAmoy.id]: http(
-      CHAIN_ID === 80002 
-        ? 'https://rpc-amoy.polygon.technology' 
-        : 'https://polygon-rpc.com'
+    [avalancheFuji.id]: http(
+      CHAIN_ID === 43113 
+        ? 'https://api.avax-test.network/ext/bc/C/rpc' 
+        : 'https://avax.api.pocket.network'
     ),
   },
   ssr: true,

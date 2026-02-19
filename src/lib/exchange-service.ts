@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { getSupabaseAdmin } from './supabase';
 import { EXCHANGE_CONFIG, type TokenSymbol, type PairSymbol } from '@/config/exchange';
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits } from 'viem';
-import { polygonAmoy } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 
 const { 
@@ -19,8 +19,8 @@ const {
 
 // Viem clients
 const publicClient = createPublicClient({
-  chain: polygonAmoy,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+  chain: avalancheFuji,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
 });
 
 // Platform wallet for sending withdrawals
@@ -41,8 +41,8 @@ const getWalletClient = () => {
   
   return createWalletClient({
     account,
-    chain: polygonAmoy,
-    transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc-amoy.polygon.technology'),
+    chain: avalancheFuji,
+    transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
   });
 };
 
