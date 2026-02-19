@@ -6,7 +6,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { createPublicClient, http, formatUnits, parseUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import Header from '@/components/Header';
-import { RPC_URL, CONTRACTS, EXPLORER_URL } from '@/config/contracts';
+import { ZERO_ADDRESS, RPC_URL, CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI, RWASecurityExchangeABI, ERC20ABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
@@ -14,8 +14,7 @@ const publicClient = createPublicClient({
   transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
 
-const EXCHANGE_ADDRESS = (CONTRACTS as any).RWASecurityExchange as `0x${string}` || '0x0000000000000000000000000000000000000000' as `0x${string}`;
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const EXCHANGE_ADDRESS = (CONTRACTS as any).RWASecurityExchange as `0x${string}` || ZERO_ADDRESS as `0x${string}`;
 const PLATFORM_WALLET = process.env.NEXT_PUBLIC_ADMIN_ADDRESS || '';
 
 // Tradable statuses: Active (2), Funded (3), InProgress (4), Completed (5)

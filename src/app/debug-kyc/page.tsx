@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { parseEther, keccak256, toBytes } from 'viem';
-import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
+import { CONTRACTS, EXPLORER_URL, ZERO_ADDRESS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 import Header from '@/components/Header';
 
@@ -109,7 +109,7 @@ export default function DebugKYCPage() {
         log(`  Country: ${sub.countryCode}`);
         log(`  DocHash: ${sub.documentHash || '(empty)'}`);
         
-        if (sub.status === 0 && sub.investor !== '0x0000000000000000000000000000000000000000') {
+        if (sub.status === 0 && sub.investor !== ZERO_ADDRESS) {
           log(`⚠️ You have a PENDING submission - cannot submit again until approved/rejected`);
         }
       } catch (e: any) {

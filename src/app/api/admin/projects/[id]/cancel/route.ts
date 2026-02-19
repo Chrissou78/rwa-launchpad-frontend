@@ -3,10 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, http } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { RPC_URL, CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS, RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 const STATUS_NAMES: Record<number, string> = {
   0: 'Draft',

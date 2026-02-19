@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Header  from '@/components/Header';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { EXPLORER_URL, CONTRACTS } from '@/config/contracts';
+import { EXPLORER_URL, CONTRACTS, ZERO_ADDRESS } from '@/config/contracts';
 import { IdentityRegistryABI } from '@/config/abis';
 
 export default function IdentityPage() {
@@ -90,7 +90,7 @@ export default function IdentityPage() {
                 <div className="flex justify-between items-center py-3">
                   <span className="text-gray-400">Identity Contract</span>
                   <span className="text-white font-mono">
-                    {identity && identity !== '0x0000000000000000000000000000000000000000'
+                    {identity && identity !== ZERO_ADDRESS
                       ? `${identity.slice(0, 6)}...${identity.slice(-4)}`
                       : 'Not Registered'}
                   </span>

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAccount, usePublicClient } from 'wagmi';
 import { formatEther } from 'viem';
-import { CONTRACTS } from '@/config/contracts';
+import { CONTRACTS, ZERO_ADDRESS } from '@/config/contracts';
 
 interface Investment {
   projectId: bigint;
@@ -72,7 +72,7 @@ export default function DashboardPage() {
           let tokenBalance = 0n;
           let investmentAmount = 0n;
           
-          if (project.securityToken !== '0x0000000000000000000000000000000000000000') {
+          if (project.securityToken !== ZERO_ADDRESS) {
             try {
               tokenBalance = await publicClient.readContract({
                 address: project.securityToken as `0x${string}`,
@@ -83,7 +83,7 @@ export default function DashboardPage() {
             } catch {}
           }
 
-          if (project.escrowVault !== '0x0000000000000000000000000000000000000000') {
+          if (project.escrowVault !== ZERO_ADDRESS) {
             try {
               investmentAmount = await publicClient.readContract({
                 address: project.escrowVault as `0x${string}`,

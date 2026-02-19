@@ -1,6 +1,5 @@
 // src/app/admin/constants.ts
 
-export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 export const OFFCHAIN_PAYMENT = '0x0000000000000000000000000000000000000001';
 
 export const STATUS_NAMES: Record<number, string> = {

@@ -6,7 +6,7 @@ import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTran
 import { injected } from 'wagmi/connectors';
 import { parseEventLogs } from 'viem';
 import { ProjectData } from '@/app/create/page';
-import { EXPLORER_URL, CONTRACTS, CHAIN_ID, FAUCET_URL } from '@/config/contracts';
+import { ZERO_ADDRESS, EXPLORER_URL, CONTRACTS, CHAIN_ID, FAUCET_URL } from '@/config/contracts';
 import { RWALaunchpadFactoryABI, RWAProjectNFTABI } from '@/config/abis';
 
 interface Props {
@@ -29,8 +29,6 @@ interface DeployedContracts {
 }
 
 type DeployStatus = 'idle' | 'connecting' | 'uploading' | 'waitingWallet' | 'confirming' | 'verifying' | 'success' | 'error';
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
 
 export function StepDeploy({ data, uploadedUrls, onBack }: Props) {
   const { address, isConnected, isConnecting } = useAccount();

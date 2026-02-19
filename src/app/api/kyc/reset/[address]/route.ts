@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, http, getAddress, keccak256, toBytes } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { avalancheFuji } from 'viem/chains';
-import { RPC_URL, CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS, ZERO_ADDRESS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 const STATUS_NAMES: Record<number, string> = {
@@ -19,7 +19,7 @@ const STATUS_NAMES: Record<number, string> = {
 
 // Role hashes
 const ADMIN_ROLE = keccak256(toBytes('ADMIN_ROLE'));
-const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`;
+const DEFAULT_ADMIN_ROLE = ZERO_ADDRESS;
 
 export async function POST(
   request: NextRequest,

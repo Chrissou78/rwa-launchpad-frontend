@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, formatUnits, parseUnits, formatEther, Address } from 'viem';
 import { avalancheFuji } from 'viem/chains';
-import { RPC_URL, CONTRACTS, EXPLORER_URL } from '@/config/contracts';
+import { ZERO_ADDRESS, RPC_URL, CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import Header from '@/components/Header';
 import StripeInvestment from '@/components/invest/StripeInvestment';
 import { useKYC } from '@/contexts/KYCContext';
@@ -29,8 +29,6 @@ const publicClient = createPublicClient({
   chain: avalancheFuji,
   transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 const TOKENS: Record<string, { address: Address; symbol: string; decimals: number }> = {
   USDC: { address: CONTRACTS.USDC as Address, symbol: 'USDC', decimals: 6 },

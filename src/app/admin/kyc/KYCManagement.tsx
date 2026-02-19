@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { isAddress, parseEther, formatEther, parseUnits, formatUnits } from 'viem';
-import { CONTRACTS } from '@/config/contracts';
+import { CONTRACTS, ZERO_ADDRESS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 // ============================================
@@ -481,7 +481,7 @@ export default function KYCManagement() {
 
       const data = sub as any;
 
-      if (data.investor === '0x0000000000000000000000000000000000000000') {
+      if (data.investor === ZERO_ADDRESS) {
         setSearchError('No KYC submission found for this address');
         return;
       }

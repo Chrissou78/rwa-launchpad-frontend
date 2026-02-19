@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http, getAddress, isAddress } from 'viem';
 import { avalancheFuji } from 'viem/chains';
-import { RPC_URL, CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS, ZERO_ADDRESS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 const RRPC_URL = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       }) as any;
 
       // Check if empty submission
-      if (submission.investor === '0x0000000000000000000000000000000000000000' || 
+      if (submission.investor === ZERO_ADDRESS || 
           Number(submission.submittedAt) === 0) {
         return NextResponse.json({ 
           success: true,

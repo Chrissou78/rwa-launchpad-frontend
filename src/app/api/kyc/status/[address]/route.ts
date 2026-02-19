@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createPublicClient, http, isAddress, formatUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
-import { RPC_URL, CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS, RPC_URL, CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 const LEVEL_NAMES: Record<number, string> = {
@@ -25,7 +25,6 @@ const client = createPublicClient({
   transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
 
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const MAX_UINT256 = BigInt('115792089237316195423570985008687907853269984665640564039457584007913129639935');
 
 // ✅ Fixed: Use 18 decimals

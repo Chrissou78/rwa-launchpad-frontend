@@ -5,7 +5,6 @@
 export const CHAIN_ID = 43113;
 export const CHAIN_ID_TESTNET = 43113;
 export const CHAIN_ID_MAINNET = 43114;
-export const NETWORK_NAME = 'Avalanche Fuji';
 export const EXPLORER_URL = 'https://testnet.snowtrace.io';
 export const FAUCET_URL = 'https://faucet.avax.network/';
 export const NATIVE_CURRENCY = 'AVAX';

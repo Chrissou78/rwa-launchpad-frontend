@@ -4,10 +4,8 @@ import Stripe from 'stripe';
 import { createWalletClient, createPublicClient, http, parseUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { RPC_URL, CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS, RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // Lazy initialization
 function getStripe() {

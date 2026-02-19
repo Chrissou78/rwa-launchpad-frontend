@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { createPublicClient, http } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import Header from '@/components/Header';
-import { RPC_URL, CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS, RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
@@ -49,7 +49,6 @@ interface Project {
 // Contract enum from IRWAProjectNFT.sol:
 // 0=Draft, 1=Pending, 2=Active, 3=Funded, 4=InProgress, 5=Completed, 6=Cancelled, 7=Failed
 const STATUS_LABELS = ['Draft', 'Pending', 'Active', 'Funded', 'In Progress', 'Completed', 'Cancelled', 'Failed'];
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // Check if project is archived (cancelled/failed AND fully refunded)
 const isProjectArchived = (project: Project): boolean => {
