@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || '';
-const POLYGONSCAN_API_URL = 'https://api-amoy.polygonscan.com/api';
+const AVASCAN_API_KEY = process.env.AVASCAN_API_KEY || '';
+const AVASCAN_API_URL = 'https://api.avascan.info/v2';
 
 // Implementation contract addresses (from deployment)
 const IMPLEMENTATIONS = {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     // For UUPS proxies, we verify the proxy contract pointing to the implementation
-    // Polygonscan will auto-detect the proxy pattern
+    // AVASCAN will auto-detect the proxy pattern
     
     const implementationAddress = IMPLEMENTATIONS[contractType as keyof typeof IMPLEMENTATIONS];
     
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Verify as ERC1967Proxy
     const verifyParams = new URLSearchParams({
-      apikey: POLYGONSCAN_API_KEY,
+      apikey: AVASCAN_API_KEY,
       module: 'contract',
       action: 'verifysourcecode',
       contractaddress: address,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       evmversion: 'paris',
     });
 
-    const response = await fetch(POLYGONSCAN_API_URL, {
+    const response = await fetch(AVASCAN_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: verifyParams.toString(),
@@ -65,13 +65,13 @@ export async function POST(request: NextRequest) {
       await new Promise(resolve => setTimeout(resolve, 5000));
       
       const checkParams = new URLSearchParams({
-        apikey: POLYGONSCAN_API_KEY,
+        apikey: AVASCAN_API_KEY,
         module: 'contract',
         action: 'checkverifystatus',
         guid,
       });
 
-      const checkResponse = await fetch(`${POLYGONSCAN_API_URL}?${checkParams.toString()}`);
+      const checkResponse = await fetch(`${AVASCAN_API_URL}?${checkParams.toString()}`);
       const checkResult = await checkResponse.json();
 
       return NextResponse.json({
@@ -83,14 +83,14 @@ export async function POST(request: NextRequest) {
 
     // If direct verification fails, try marking as proxy
     const proxyParams = new URLSearchParams({
-      apikey: POLYGONSCAN_API_KEY,
+      apikey: AVASCAN_API_KEY,
       module: 'contract',
       action: 'verifyproxycontract',
       address,
       expectedimplementation: implementationAddress,
     });
 
-    const proxyResponse = await fetch(`${POLYGONSCAN_API_URL}?${proxyParams.toString()}`);
+    const proxyResponse = await fetch(`${AVASCAN_API_URL}?${proxyParams.toString()}`);
     const proxyResult = await proxyResponse.json();
 
     return NextResponse.json({

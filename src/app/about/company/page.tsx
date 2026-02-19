@@ -165,10 +165,10 @@ export default function CompanyPage() {
 
       {/* Technology Section */}
       <section className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded-3xl p-8 border border-purple-500/20">
-        <h2 className="text-3xl font-bold text-white mb-6 text-center">Built on Polygon</h2>
+        <h2 className="text-3xl font-bold text-white mb-6 text-center">Built on Avalanche</h2>
         <div className="max-w-3xl mx-auto text-center">
           <p className="text-gray-300 mb-6">
-            Our platform is built on Polygon, a leading Ethereum scaling solution that provides 
+            Our platform is built on Avalanche, a leading Ethereum scaling solution that provides 
             fast, low-cost transactions while maintaining the security of Ethereum. All our 
             smart contracts are open source and verified on-chain.
           </p>

@@ -348,12 +348,12 @@ export default function CrowdfundingPage() {
               <span className="text-yellow-200">
                 This application is running on Avalanche Fuji testnet. Get test MATIC from the{' '}
                 <a
-                  href="https://faucet.polygon.technology/"
+                  href="https://core.app/tools/testnet-faucet"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline hover:text-yellow-100"
                 >
-                  Polygon Faucet
+                  Avalanche Faucet
                 </a>
               </span>
             </div>

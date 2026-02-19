@@ -227,7 +227,7 @@ export default function PlatformContracts() {
           <div className="bg-gray-700/50 rounded-lg p-4">
             <p className="text-gray-400 text-sm">Network</p>
             <p className="text-white font-medium">
-              {CHAIN_ID === 43113 ? 'Avalanche Fuji Testnet' : CHAIN_ID === 43114 ? 'Polygon Mainnet' : `Chain ${CHAIN_ID}`}
+              {CHAIN_ID === 43113 ? 'Avalanche Fuji Testnet' : CHAIN_ID === 43114 ? 'Avalanche C-Chain Mainnet' : `Chain ${CHAIN_ID}`}
             </p>
             <p className="text-gray-400 text-xs mt-1">Chain ID: {CHAIN_ID}</p>
           </div>
