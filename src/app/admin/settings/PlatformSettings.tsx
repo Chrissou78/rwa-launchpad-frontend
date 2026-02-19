@@ -3,8 +3,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { isAddress, formatEther } from 'viem';
-import { VaultSettings, ZERO_ADDRESS } from '../constants';
+import { VaultSettings } from '../constants';
 import { getExplorerUrl } from '../helpers';
+import { ZERO_ADDRESS } from '@/config/contracts';
 
 export default function PlatformSettings() {
   const [settings, setSettings] = useState<{

@@ -5,7 +5,8 @@ import { useState, useEffect } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { isAddress } from 'viem';
 import { RWAEscrowVaultABI } from '@/config/abis';
-import { Project, ZERO_ADDRESS } from '../constants';
+import { Project } from '../constants';
+import { ZERO_ADDRESS } from '@/config/contracts';
 import { formatUSD } from '../helpers';
 
 interface OffChainPaymentsProps {

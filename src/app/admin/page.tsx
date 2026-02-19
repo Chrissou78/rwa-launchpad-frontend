@@ -4,10 +4,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
-import { CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWAEscrowVaultABI, KYCManagerABI } from '@/config/abis';
 import { publicClient } from './client';
-import { Project, AdminTab, KYCStats, TokenizationStats, TradeStats, DisputeStats, ZERO_ADDRESS } from './constants';
+import { Project, AdminTab, KYCStats, TokenizationStats, TradeStats, DisputeStats } from './constants';
 import { convertIPFSUrl } from './helpers';
 import {
   LayoutDashboard,
