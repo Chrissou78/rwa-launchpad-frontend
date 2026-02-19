@@ -189,12 +189,12 @@ export default function KYCManagement() {
     });
   };
 
-  const formatPOL = (value: number): string => {
-    if (isNaN(value) || value === 0) return '0 POL';
+  const formatAVAX = (value: number): string => {
+    if (isNaN(value) || value === 0) return '0 AVAX';
     return value.toLocaleString('en-US', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 4,
-    }) + ' POL';
+    }) + ' AVAX';
   };
 
   const formatDate = (timestamp: number): string => {
@@ -381,19 +381,19 @@ export default function KYCManagement() {
         }).catch(() => false),
       ]);
 
-      const feeInPOL = Number(formatEther(feeRaw as bigint));
+      const feeInAVAX = Number(formatEther(feeRaw as bigint));
       const thresholdUSD = fromContractUSD(thresholdRaw as bigint);
       const validityDays = Number(validityRaw) / 86400;
 
       setSettings({
-        kycFee: feeInPOL,
+        kycFee: feeInAVAX,
         feeRecipient: recipient as string,
         autoVerifyThreshold: thresholdUSD === 'unlimited' ? 0 : thresholdUSD,
         kycValidityPeriod: validityDays,
         paused: paused as boolean,
       });
 
-      setFeeInput(feeInPOL.toString());
+      setFeeInput(feeInAVAX.toString());
       setThresholdInput(thresholdUSD === 'unlimited' ? '0' : thresholdUSD.toString());
       setEditFeeRecipient(recipient as string);
 
@@ -799,7 +799,7 @@ export default function KYCManagement() {
         args: [parseEther(feeInput)],
       });
       await publicClient.waitForTransactionReceipt({ hash });
-      setResult({ type: 'success', message: `KYC fee updated to ${formatPOL(feeValue)}` });
+      setResult({ type: 'success', message: `KYC fee updated to ${formatAVAX(feeValue)}` });
       fetchSettings();
       notifyKYCUpdate();
     } catch (error: any) {
@@ -1614,7 +1614,7 @@ export default function KYCManagement() {
                           min="0"
                           className="w-full px-4 py-2 pr-16 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">POL</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">AVAX</span>
                       </div>
                       <button
                         onClick={updateKYCFee}
@@ -1625,7 +1625,7 @@ export default function KYCManagement() {
                       </button>
                     </div>
                     <p className="text-gray-500 text-xs mt-1">
-                      Current: <span className="text-white">{formatPOL(settings.kycFee)}</span>
+                      Current: <span className="text-white">{formatAVAX(settings.kycFee)}</span>
                     </p>
                   </div>
 
