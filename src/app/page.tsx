@@ -5,6 +5,7 @@ import React from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
+import {FAUCET_URL} from '@/config/contracts';
 import { useConnectModal } from '../components/ConnectButton';
 import { 
   Building2, 
@@ -577,21 +578,12 @@ export default function LandingPage() {
             <span className="text-red-200">
               This application is running on Avalanche Fuji testnet. Get test AVAX from the{' '}
               <a
-                href="https://faucet.avax.network/"
+                href={FAUCET_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-red-100"
               >
                 Avalanche Faucet
-              </a>
-              {' '}or{' '}
-              <a
-                href="https://core.app/tools/testnet-faucet/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-red-100"
-              >
-                Core Faucet
               </a>
             </span>
           </div>

@@ -1,17 +1,17 @@
 import { http, createConfig } from 'wagmi'
 import { injected, walletConnect } from 'wagmi/connectors'
 import type { Chain } from 'viem'
-import { CHAIN_ID, EXPLORER_URL } from '@/config/contracts'
+import { RPC_URL, NATIVE_CURRENCY, CHAIN_ID, CHAIN_ID_MAINNET, CHAIN_ID_TESTNET, EXPLORER_URL } from '@/config/contracts'
 
 // Avalanche Fuji Testnet
 export const avalancheFuji: Chain = {
   id: CHAIN_ID,
-  name: CHAIN_ID === 43113 ? 'Avalanche Fuji' : CHAIN_ID === 43114 ? 'Avalanche C-Chain' : `Chain ${CHAIN_ID}`,
-  nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 },
+  name: CHAIN_ID === CHAIN_ID_TESTNET ? 'Avalanche Fuji' : CHAIN_ID === CHAIN_ID_MAINNET ? 'Avalanche C-Chain' : `Chain ${CHAIN_ID}`,
+  nativeCurrency: { name: NATIVE_CURRENCY, symbol: NATIVE_CURRENCY, decimals: 18 },
   rpcUrls: {
     default: { 
-      http: [CHAIN_ID === 43113 
-        ? 'https://api.avax-test.network/ext/bc/C/rpc' 
+      http: [CHAIN_ID === CHAIN_ID_TESTNET 
+        ? RPC_URL
         : 'https://avax.api.pocket.network'
       ] 
     },
@@ -19,7 +19,7 @@ export const avalancheFuji: Chain = {
   blockExplorers: {
     default: { name: 'SnowTrace', url: EXPLORER_URL },
   },
-  testnet: CHAIN_ID === 43113,
+  testnet: CHAIN_ID === CHAIN_ID_TESTNET,
 }
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || ''
@@ -46,8 +46,8 @@ export const config = createConfig({
   ],
   transports: {
     [avalancheFuji.id]: http(
-      CHAIN_ID === 43113 
-        ? 'https://api.avax-test.network/ext/bc/C/rpc' 
+      CHAIN_ID === CHAIN_ID_TESTNET 
+        ? RPC_URL
         : 'https://avax.api.pocket.network'
     ),
   },

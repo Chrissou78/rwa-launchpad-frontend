@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { parseEther, keccak256, toBytes } from 'viem';
-import { CONTRACTS } from '@/config/contracts';
+import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 import Header from '@/components/Header';
 
@@ -337,7 +337,8 @@ export default function DebugKYCPage() {
       });
 
       log(`TX SENT! Hash: ${hash}`);
-      log(`View: https://testnet.snowtrace.io//tx/${hash}`);
+      log(`View: ${EXPLORER_URL}/tx/${hash}`);
+
       
       log('Waiting for confirmation...');
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -479,7 +480,8 @@ export default function DebugKYCPage() {
       });
 
       log(`TX SENT! Hash: ${hash}`);
-      log(`View: https://testnet.snowtrace.io//tx/${hash}`);
+      log(`View: ${EXPLORER_URL}/tx/${hash}`);
+
       
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       log(`TX Status: ${receipt?.status === 'success' ? 'SUCCESS ✓' : 'FAILED ✗'}`);
@@ -543,7 +545,8 @@ export default function DebugKYCPage() {
       });
 
       log(`TX SENT! Hash: ${hash}`);
-      log(`View: https://testnet.snowtrace.io//tx/${hash}`);
+      log(`View: ${EXPLORER_URL}/tx/${hash}`);
+
       
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       log(`TX Status: ${receipt?.status === 'success' ? 'SUCCESS ✓' : 'FAILED ✗'}`);

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createWalletClient, createPublicClient, http } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI } from '@/config/abis';
 
 export async function POST(
@@ -28,12 +28,12 @@ export async function POST(
     const walletClient = createWalletClient({
       account,
       chain: avalancheFuji,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
     });
 
     const publicClient = createPublicClient({
       chain: avalancheFuji,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
     });
 
     // Update status to Active (2)

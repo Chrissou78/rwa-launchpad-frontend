@@ -32,7 +32,6 @@ import { AdminOverview, PlatformContracts } from './components';
 import KYCManagement from './kyc/KYCManagement';
 import ProjectManagement from './projects/ProjectManagement';
 import OffChainPayments from './offchain/OffChainPayments';
-import IdentityManagement from './identity/IdentityManagement';
 import FactorySettings from './settings/FactorySettings';
 import PlatformSettings from './settings/PlatformSettings';
 import TokenizationManagement from './tokenization/TokenizationManagement';
@@ -47,7 +46,6 @@ const tabs: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
   { id: 'disputes', label: 'Disputes', icon: <AlertTriangle className="w-4 h-4" /> },
   { id: 'offchain', label: 'Off-Chain', icon: <CreditCard className="w-4 h-4" /> },
   { id: 'kyc', label: 'KYC', icon: <UserCheck className="w-4 h-4" /> },
-  { id: 'identity', label: 'Identity', icon: <Fingerprint className="w-4 h-4" /> },
   { id: 'contracts', label: 'Contracts', icon: <FileCode className="w-4 h-4" /> },
   { id: 'factory', label: 'Factory', icon: <Factory className="w-4 h-4" /> },
   { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
@@ -389,8 +387,6 @@ export default function AdminPage() {
         return <OffChainPayments projects={projects} onRefresh={fetchProjects} />;
       case 'kyc':
         return <KYCManagement />;
-      case 'identity':
-        return <IdentityManagement projects={projects} />;
       case 'contracts':
         return <PlatformContracts />;
       case 'factory':

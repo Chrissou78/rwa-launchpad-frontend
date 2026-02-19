@@ -6,7 +6,7 @@ import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTran
 import { injected } from 'wagmi/connectors';
 import { parseEventLogs } from 'viem';
 import { ProjectData } from '@/app/create/page';
-import { EXPLORER_URL, CONTRACTS, CHAIN_ID } from '@/config/contracts';
+import { EXPLORER_URL, CONTRACTS, CHAIN_ID, FAUCET_URL } from '@/config/contracts';
 import { RWALaunchpadFactoryABI, RWAProjectNFTABI } from '@/config/abis';
 
 interface Props {
@@ -500,7 +500,7 @@ try {
           </button>
           <p className="text-gray-500 text-sm mt-4">
             Need testnet AVAX?{' '}
-            <a href="https://core.app/tools/testnet-faucet" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
+            <a href={FAUCET_URL} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
               Get from faucet
             </a>
           </p>

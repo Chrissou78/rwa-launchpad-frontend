@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, http } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -41,7 +41,7 @@ export async function POST(
     }
 
     const account = privateKeyToAccount(adminKey as `0x${string}`);
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
 
     const publicClient = createPublicClient({
       chain: avalancheFuji,

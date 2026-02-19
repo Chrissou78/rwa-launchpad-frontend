@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createPublicClient, http, isAddress, formatUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 const LEVEL_NAMES: Record<number, string> = {
@@ -22,7 +22,7 @@ const STATUS_NAMES: Record<number, string> = {
 
 const client = createPublicClient({
   chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';

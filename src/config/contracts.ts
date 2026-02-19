@@ -3,11 +3,15 @@
 // Network: Avalanche Fuji (Chain ID: 43113)
 
 export const CHAIN_ID = 43113;
+export const CHAIN_ID_TESTNET = 43113;
+export const CHAIN_ID_MAINNET = 43114;
 export const NETWORK_NAME = 'Avalanche Fuji';
 export const EXPLORER_URL = 'https://testnet.snowtrace.io';
+export const FAUCET_URL = 'https://faucet.avax.network/';
 export const NATIVE_CURRENCY = 'AVAX';
 export const RPC_URL = 'https://api.avax-test.network/ext/bc/C/rpc';
 export const IS_TESTNET = true;
+export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 export const CONTRACTS = {
   // Core contracts
@@ -55,9 +59,6 @@ export const FEES = {
   KYC_FEE: '50000000000000000',
   KYC_FEE_FORMATTED: '0.05',
 } as const;
-
-// Faucet URL (testnet only)
-export const FAUCET_URL = 'https://faucet.avax.network/';
 
 // Type exports
 export type ContractAddresses = typeof CONTRACTS;

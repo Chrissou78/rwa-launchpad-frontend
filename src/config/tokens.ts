@@ -1,14 +1,17 @@
 // config/tokens.ts
+// 
+import {RPC_URL, NATIVE_CURRENCY, EXPLORER_URL, CHAIN_ID_TESTNET, CHAIN_ID_MAINNET, FAUCET_URL } from './contracts';
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-export const AVALANCHE_FUJI_CONFIG = {
-  chainId: 43113,
+export const TESTNET_CONFIG = {
+  chainId: CHAIN_ID_TESTNET,
   name: 'Avalanche Fuji',
-  rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc',
-  explorer: 'https://testnet.snowtrace.io',
+  rpcUrl: RPC_URL,
+  explorer: EXPLORER_URL,
   nativeCurrency: {
     name: 'Avalanche',
-    symbol: 'AVAX',
+    symbol: NATIVE_CURRENCY,
     decimals: 18,
   },
   TOKENS: {
@@ -20,17 +23,17 @@ export const AVALANCHE_FUJI_CONFIG = {
     LINK: { address: '0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846', decimals: 18 },
   } as Record<string, { address: string; decimals: number; isNative?: boolean }>,
   REFRESH_INTERVAL: 2000,
-  faucet: 'https://faucet.avax.network/',
+  faucet: FAUCET_URL,
 };
 
-export const AVALANCHE_MAINNET_CONFIG = {
-  chainId: 43114,
+export const MAINNET_CONFIG = {
+  chainId: CHAIN_ID_MAINNET,
   name: 'Avalanche',
   rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
   explorer: 'https://snowtrace.io',
   nativeCurrency: {
     name: 'Avalanche',
-    symbol: 'AVAX',
+    symbol: NATIVE_CURRENCY,
     decimals: 18,
   },
   TOKENS: {
@@ -47,4 +50,4 @@ export const AVALANCHE_MAINNET_CONFIG = {
 };
 
 // Active config
-export const ACTIVE_CONFIG = AVALANCHE_FUJI_CONFIG;
+export const ACTIVE_CONFIG = TESTNET_CONFIG;

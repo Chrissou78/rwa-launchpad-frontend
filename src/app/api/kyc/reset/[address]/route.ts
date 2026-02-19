@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, createWalletClient, http, getAddress, keccak256, toBytes } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { avalancheFuji } from 'viem/chains';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 const STATUS_NAMES: Record<number, string> = {
@@ -59,7 +59,7 @@ export async function POST(
 
     const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
     const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY as `0x${string}`;
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+    const RRPC_URL = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
 
     if (!VERIFIER_PRIVATE_KEY) {
       return NextResponse.json(
@@ -76,7 +76,7 @@ export async function POST(
     // Create clients
     const publicClient = createPublicClient({
       chain: avalancheFuji,
-      transport: http(RPC_URL)
+      transport: http(RRPC_URL)
     });
 
     const account = privateKeyToAccount(VERIFIER_PRIVATE_KEY);
@@ -85,7 +85,7 @@ export async function POST(
     const walletClient = createWalletClient({
       account,
       chain: avalancheFuji,
-      transport: http(RPC_URL)
+      transport: http(RRPC_URL)
     });
 
     // Check current KYC status
@@ -256,11 +256,11 @@ export async function GET(
     }
 
     const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+    const RRPC_URL = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
 
     const publicClient = createPublicClient({
       chain: avalancheFuji,
-      transport: http(RPC_URL)
+      transport: http(RRPC_URL)
     });
 
     const submission = await publicClient.readContract({

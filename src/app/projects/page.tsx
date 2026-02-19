@@ -7,12 +7,12 @@ import Image from 'next/image';
 import { createPublicClient, http } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import Header from '@/components/Header';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
   chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
 
 interface ProjectMetadata {

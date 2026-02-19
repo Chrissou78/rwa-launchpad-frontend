@@ -5,6 +5,7 @@ import { EXCHANGE_CONFIG, type TokenSymbol, type PairSymbol } from '@/config/exc
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import { RPC_URL } from '@/config/contracts';
 
 const { 
   MEXC_API_KEY, 
@@ -20,7 +21,7 @@ const {
 // Viem clients
 const publicClient = createPublicClient({
   chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
 
 // Platform wallet for sending withdrawals
@@ -42,7 +43,7 @@ const getWalletClient = () => {
   return createWalletClient({
     account,
     chain: avalancheFuji,
-    transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+    transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
   });
 };
 

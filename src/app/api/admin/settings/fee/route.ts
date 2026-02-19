@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createWalletClient, createPublicClient, http, parseEther, formatEther } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -51,7 +51,7 @@ async function getAllEscrowVaults(publicClient: ReturnType<typeof createPublicCl
 // GET - Fetch current fee settings from all escrow vaults
 export async function GET() {
   try {
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
     console.log('Using RPC:', rpcUrl);
     console.log('Project NFT address:', CONTRACTS.RWAProjectNFT);
 
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
 
     const account = privateKeyToAccount(process.env.VERIFIER_PRIVATE_KEY as `0x${string}`);
 
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
 
     const walletClient = createWalletClient({
       account,

@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createPublicClient, http, formatUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 const MAX_UINT256 = BigInt('115792089237316195423570985008687907853269984665640564039457584007913129639935');
@@ -16,10 +16,7 @@ export async function GET() {
       }, { status: 500 });
     }
 
-    const publicClient = createPublicClient({
-      chain: avalancheFuji,
-      transport: http(process.env.RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
-    });
+    const publicClient = createPublicClient({chain: avalancheFuji, transport: http(process.env.RPC_URL || RPC_URL),});
 
     const contractAddress = CONTRACTS.KYCManager as `0x${string}`;
 

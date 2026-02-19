@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
+import { EXPLORER_URL } from '@/config/contracts';
 import { useAdmin, AdminUser } from '@/hooks/useAdmin';
 import {
   Shield,
@@ -371,7 +372,7 @@ export default function AdminUsersManagement() {
                           <Copy className="w-3 h-3" />
                         </button>
                         <a
-                          href={`https://testnet.snowtrace.io//address/${admin.wallet_address}`}
+                          href={`${EXPLORER_URL}/address/${admin.wallet_address}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-1 text-gray-500 hover:text-white transition-colors"

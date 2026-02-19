@@ -2,10 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http, getAddress, isAddress } from 'viem';
 import { avalancheFuji } from 'viem/chains';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+const RRPC_URL = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
 
 // Contract status: PENDING=0, APPROVED=1, REJECTED=2, EXPIRED=3
 // Admin UI status: None=0, Pending=1, AutoVerifying=2, ManualReview=3, Approved=4, Rejected=5, Expired=6
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const publicClient = createPublicClient({
       chain: avalancheFuji,
-      transport: http(RPC_URL)
+      transport: http(RRPC_URL)
     });
 
     // Get basic stats (pending count only - GDPR compliant)

@@ -4,14 +4,14 @@ import { createPublicClient, createWalletClient, http } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { saveKYCDocuments } from '@/lib/kycStorage';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+const RRPC_URL = process.env.NEXT_PUBLIC_RPC_URL || RPC_URL;
 const VERIFIER_PRIVATE_KEY = process.env.VERIFIER_PRIVATE_KEY;
 
 // Scoring thresholds
@@ -451,9 +451,9 @@ export async function POST(request: NextRequest) {
 
     // Blockchain interaction
     try {
-      const publicClient = createPublicClient({ chain: avalancheFuji, transport: http(RPC_URL) });
+      const publicClient = createPublicClient({ chain: avalancheFuji, transport: http(RRPC_URL) });
       const account = privateKeyToAccount(VERIFIER_PRIVATE_KEY as `0x${string}`);
-      const walletClient = createWalletClient({ account, chain: avalancheFuji, transport: http(RPC_URL) });
+      const walletClient = createWalletClient({ account, chain: avalancheFuji, transport: http(RRPC_URL) });
 
       // Read current on-chain status
       const submission = (await publicClient.readContract({

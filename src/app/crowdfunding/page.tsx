@@ -2,6 +2,7 @@
 
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
+import { FAUCET_URL } from '@/config/contracts';
 import { useConnectModal } from '../../components/ConnectButton';
 import Link from 'next/link';
 import {
@@ -348,7 +349,7 @@ export default function CrowdfundingPage() {
               <span className="text-yellow-200">
                 This application is running on Avalanche Fuji testnet. Get test MATIC from the{' '}
                 <a
-                  href="https://core.app/tools/testnet-faucet"
+                  href={FAUCET_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline hover:text-yellow-100"

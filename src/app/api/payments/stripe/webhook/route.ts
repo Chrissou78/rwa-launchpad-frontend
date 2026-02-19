@@ -4,7 +4,7 @@ import Stripe from 'stripe';
 import { createWalletClient, createPublicClient, http, parseUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS } from '@/config/contracts';
+import { RPC_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -59,7 +59,7 @@ const OffChainInvestmentManagerABI = [
 
 const publicClient = createPublicClient({
   chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
 
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
@@ -110,7 +110,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     const walletClient = createWalletClient({
       account,
       chain: avalancheFuji,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+      transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
     });
 
     // Step 1: Create investment and mint tokens

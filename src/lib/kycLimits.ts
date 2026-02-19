@@ -1,7 +1,7 @@
 // src/lib/kyc-limits.ts
 import { createPublicClient, http } from 'viem';
 import { avalancheFuji } from 'viem/chains';
-import { CONTRACTS } from '@/config/contracts';
+import { CONTRACTS, RPC_URL } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 
 const TIER_NAMES = ['None', 'Bronze', 'Silver', 'Gold', 'Diamond'] as const;
@@ -38,7 +38,7 @@ export async function getTierLimitsFromContract(): Promise<TierLimits> {
 
   const client = createPublicClient({
     chain: avalancheFuji,
-    transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+    transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
   });
 
   const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;
@@ -96,7 +96,7 @@ export async function getUserLimits(address: `0x${string}`): Promise<{
 
   const client = createPublicClient({
     chain: avalancheFuji,
-    transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc')
+    transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL)
   });
 
   const KYC_MANAGER_ADDRESS = CONTRACTS.KYCManager as `0x${string}`;

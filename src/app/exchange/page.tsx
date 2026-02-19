@@ -6,12 +6,12 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { createPublicClient, http, formatUnits, parseUnits } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import Header from '@/components/Header';
-import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
+import { RPC_URL, CONTRACTS, EXPLORER_URL } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI, RWASecurityExchangeABI, ERC20ABI } from '@/config/abis';
 
 const publicClient = createPublicClient({
   chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc'),
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
 });
 
 const EXCHANGE_ADDRESS = (CONTRACTS as any).RWASecurityExchange as `0x${string}` || '0x0000000000000000000000000000000000000000' as `0x${string}`;
