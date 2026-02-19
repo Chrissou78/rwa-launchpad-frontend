@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ZERO_ADDRESS } from '../constants';
+import { ZERO_ADDRESS } from '@/config/contracts';
 import { getExplorerUrl, truncateAddress } from '../helpers';
 
 interface ContractRowProps {

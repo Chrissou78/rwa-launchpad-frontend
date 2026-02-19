@@ -4,10 +4,9 @@
 import { useState, useEffect } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { isAddress, formatEther, parseEther } from 'viem';
-import { CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS, CONTRACTS } from '@/config/contracts';
 import { RWALaunchpadFactoryABI } from '@/config/abis';
 import { publicClient } from '../client';
-import { ZERO_ADDRESS } from '../constants';
 import { getExplorerUrl } from '../helpers';
 
 interface ImplementationAddresses {

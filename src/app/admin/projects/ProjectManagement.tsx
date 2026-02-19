@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { ZERO_ADDRESS } from '@/config/contracts';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { RWAEscrowVaultABI } from '@/config/abis';
 import { publicClient } from '../client';
@@ -9,7 +10,6 @@ import {
   Project,
   Milestone,
   TokenBalance,
-  ZERO_ADDRESS,
   STATUS_NAMES,
   STATUS_COLORS,
   MILESTONE_STATUS,

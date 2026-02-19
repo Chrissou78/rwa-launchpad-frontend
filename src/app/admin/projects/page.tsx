@@ -5,11 +5,11 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import Header from '@/components/Header';
 import Link from 'next/link';
-import { EXPLORER_URL, CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS, EXPLORER_URL, CONTRACTS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWAEscrowVaultABI } from '@/config/abis';
 import MilestoneAdmin from '@/components/admin/MilestoneAdmin';
 import { publicClient } from '../client';
-import { ZERO_ADDRESS, STATUS_NAMES, STATUS_COLORS } from '../constants';
+import { STATUS_NAMES, STATUS_COLORS } from '../constants';
 
 const PROJECT_NFT = CONTRACTS.RWAProjectNFT;
 

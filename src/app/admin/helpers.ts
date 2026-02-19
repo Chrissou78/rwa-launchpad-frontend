@@ -1,7 +1,6 @@
 // src/app/admin/helpers.ts
 
-import { EXPLORER_URL, CONTRACTS } from '@/config/contracts';
-import { ZERO_ADDRESS, OFFCHAIN_PAYMENT } from './constants';
+import { ZERO_ADDRESS, EXPLORER_URL, CONTRACTS } from '@/config/contracts';
 
 export const formatUSD = (amount: bigint): string => {
   const value = Number(amount) / 1e6;

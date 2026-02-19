@@ -6,7 +6,7 @@ import { formatEther } from 'viem';
 import { CHAIN_ID,  CHAIN_ID_TESTNET, CHAIN_ID_MAINNET, EXPLORER_URL, CONTRACTS } from '@/config/contracts';
 import { RWALaunchpadFactoryABI } from '@/config/abis';
 import { publicClient } from '../client';
-import { ZERO_ADDRESS } from '../constants';
+import { ZERO_ADDRESS } from '@/config/contracts';
 import { getExplorerUrl, truncateAddress } from '../helpers';
 import ContractRow from './ContractRow';
 
