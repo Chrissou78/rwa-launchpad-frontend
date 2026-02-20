@@ -1,6 +1,13 @@
 // src/app/admin/page.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+import AdminClient from './AdminClient';
+
+export default function AdminPage() {
+  return <AdminClient />;
+}
+
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/Header';
 import { useAccount, usePublicClient } from 'wagmi';
