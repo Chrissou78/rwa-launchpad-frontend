@@ -133,7 +133,7 @@ export default function ApplicationDetailPage() {
     nativeCurrency,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   // Check for wrong chain
@@ -305,8 +305,7 @@ export default function ApplicationDetailPage() {
 
   // Network not supported
   if (!isDeployed) {
-    const deployedChains = getDeployedChains();
-    
+   
     return (
       <div className="min-h-screen bg-gray-900">
         <Header />

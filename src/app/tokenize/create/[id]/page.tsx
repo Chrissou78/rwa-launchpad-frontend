@@ -170,7 +170,7 @@ export default function TokenCreatePage() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   // Derive contract addresses from chain config
@@ -648,8 +648,6 @@ export default function TokenCreatePage() {
 
   // Network not supported
   if (!isDeployed) {
-    const deployedChains = getDeployedChains();
-    
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="bg-gray-800 rounded-2xl p-8 max-w-md text-center">

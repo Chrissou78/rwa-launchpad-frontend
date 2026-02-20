@@ -830,7 +830,7 @@ function ProjectPageContent() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   // Check for wrong chain
@@ -1097,7 +1097,6 @@ function ProjectPageContent() {
 
   // Network not supported
   if (!isDeployed) {
-    const deployedChains = getDeployedChains();
     
     return (
       <div className="min-h-screen bg-slate-900">

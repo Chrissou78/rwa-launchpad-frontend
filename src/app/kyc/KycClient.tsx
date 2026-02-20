@@ -115,7 +115,7 @@ export default function KycClient() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   // Check for wrong chain
@@ -1405,9 +1405,7 @@ export default function KycClient() {
   }
 
   // Network not supported
-  if (!isDeployed) {
-    const deployedChains = getDeployedChains();
-    
+  if (!isDeployed) {    
     return (
       <>
         <Header />

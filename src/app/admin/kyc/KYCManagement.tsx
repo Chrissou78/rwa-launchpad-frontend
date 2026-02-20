@@ -57,12 +57,11 @@ export default function KYCManagement() {
     isDeployed,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   const kycManagerAddress = contracts?.KYCManager as Address | undefined;
   const currencySymbol = nativeCurrency?.symbol || 'ETH';
-  const deployedChains = getDeployedChains();
 
   // Active tab
   const [activeTab, setActiveTab] = useState<'verify' | 'settings'>('verify');

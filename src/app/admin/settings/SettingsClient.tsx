@@ -84,7 +84,7 @@ export default function SettingsClient() {
     isDeployed,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   const [settings, setSettings] = useState<FeeSettings | null>(null);
@@ -105,9 +105,6 @@ export default function SettingsClient() {
   const [showFeeModal, setShowFeeModal] = useState(false);
   const [showRecipientModal, setShowRecipientModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-
-  // Get deployed chains
-  const deployedChains = getDeployedChains();
   const currencySymbol = nativeCurrency?.symbol || 'ETH';
 
   // Fetch settings for current chain

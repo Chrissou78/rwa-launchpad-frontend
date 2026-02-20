@@ -1,19 +1,28 @@
+// src/config/deployments.ts
 import { SupportedChainId } from "./chains";
 
 export interface DeploymentData {
   contracts: {
+    // Core contracts
     RWAProjectNFT: string;
     RWALaunchpadFactory: string;
     KYCManager: string;
     RWATokenizationFactory: string;
+    RWATradeEscrow: string;
+    
+    // Identity contracts
     IdentityRegistry: string;
     IdentityRegistryStorage: string;
     ClaimTopicsRegistry: string;
     TrustedIssuersRegistry: string;
+    
+    // Other contracts
     RWASecurityExchange: string;
     OffChainInvestmentManager: string;
     CountryRestrictModule: string;
     AccreditedInvestorModule: string;
+    
+    // Implementation contracts
     Implementations: {
       SecurityToken: string;
       EscrowVault: string;
@@ -25,6 +34,8 @@ export interface DeploymentData {
       DividendDistributor: string;
       MaxBalanceModule: string;
       LockupModule: string;
+      RWATradeEscrow: string;
+      TokenizationFactory: string;
     };
   };
   tokens: {
@@ -49,6 +60,7 @@ const EMPTY_DEPLOYMENT: DeploymentData = {
     RWALaunchpadFactory: ZERO,
     KYCManager: ZERO,
     RWATokenizationFactory: ZERO,
+    RWATradeEscrow: ZERO,
     IdentityRegistry: ZERO,
     IdentityRegistryStorage: ZERO,
     ClaimTopicsRegistry: ZERO,
@@ -68,6 +80,8 @@ const EMPTY_DEPLOYMENT: DeploymentData = {
       DividendDistributor: ZERO,
       MaxBalanceModule: ZERO,
       LockupModule: ZERO,
+      RWATradeEscrow: ZERO,
+      TokenizationFactory: ZERO,
     },
   },
   tokens: {
@@ -89,29 +103,32 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
   // ========================================
   43113: {
     contracts: {
-      RWAProjectNFT: "0x887E74dDf58FF6a0F6DE51e0fe310e5943E13247",
-      RWALaunchpadFactory: "0xd24e102B207f55a7B13F2d269de5ebC2B526A2dF",
-      KYCManager: "0x3D58fFF590d1E925fd0f510e96C20bc12691840F",
-      RWATokenizationFactory: "0xa02567564095960412BD32cC47C07a91f85BA213",
-      IdentityRegistry: "0x01395d6ac65868A48eE2Df3DB41e2Fd4d4387B5D",
-      IdentityRegistryStorage: "0x22005206f3FeC3A12Eb507591De8f201e0807b5d",
-      ClaimTopicsRegistry: "0x502e3c88828db1b478c38CD251Bfe861429b9482",
-      TrustedIssuersRegistry: "0xE9DA0F79BC40e1c111de49498b3Fb17dCE59b7f2",
-      RWASecurityExchange: "0x9ce72c0932441482A492Fa4a5b2F4Dea5E87F722",
-      OffChainInvestmentManager: "0x70624D6f3f4FF5ff684Bfe87E862ccEB21a604B2",
-      CountryRestrictModule: "0x941Bf67C211983639b8c3C5374212a25216B25a8",
-      AccreditedInvestorModule: "0x8a2Da8bF967B24A466458c4751453200B968dF06",
+      RWAProjectNFT: "0x0F0b2B1763C49758423f952dEf41d638C8dE7bDF",
+      RWALaunchpadFactory: "0xAa3aCCf3C777fCa942e698BA3Abff27d4e43eaB2",
+      KYCManager: "0x8370A7c242fd30911a6E6B52335FC4AdF7753c6F",
+      RWATokenizationFactory: "0x2dd0b32EeF71d963f84da652c15742A416393fe8",
+      RWATradeEscrow: "0xe7F8a504C53E3B5e4E954a442D3f2627dD19b8c4",
+      IdentityRegistry: "0x10C0C865594Af3E642D44d925AD621e0563431c5",
+      IdentityRegistryStorage: "0x135d953926A39CB868e524a4D6cFE026b751fA71",
+      ClaimTopicsRegistry: "0xf30A735389F69Bf46e00731D164300E16129CDb2",
+      TrustedIssuersRegistry: "0xd2ae7843435e809b6f4b638bEB5495F768841D45",
+      RWASecurityExchange: "0x2Eb97264737edFA3FE998960967BBA4b4D36BB3E",
+      OffChainInvestmentManager: "0xe233382adAb62B569D2b392FdeE5000457135D9c",
+      CountryRestrictModule: "0xf4f252ef2383CaCb54Fc75A48b7FD2D5dc66E577",
+      AccreditedInvestorModule: "0x79FB567C8Dc0A35F6622Ed070060FB6fc7a9cB5A",
       Implementations: {
-        SecurityToken: "0x90Ae280C9b591F136883A243661ce63df517108a",
-        EscrowVault: "0x847082755E336b629eD5B7d300a032587eD96058",
-        Compliance: "0x2ac12b2Dbf343146A11cCA2DC1467148DAEb4447",
-        ProjectNFT: "0x0F6a4f7486ad12e03C89800F251e7f046fD2Ec4e",
-        KYCManager: "0x0D128B3480bb7566dc3c6846cEA5E1A25512c903",
-        OffChainManager: "0xC8e4E9B4e2814c7E5295DE8809E7Dc321539fe9e",
-        Exchange: "0xEcD5F2772fF19089f46f1542A07736dfeD9D17e7",
-        DividendDistributor: "0x02D074440967709a56E91cDACfdB37f8Ca2843D9",
-        MaxBalanceModule: "0x44EBD95d5C6Ea4eB24DEa99231A0e87F0ED025DE",
-        LockupModule: "0xAc005d3978F6288755d532A1Aca59fe46D719146",
+        SecurityToken: "0x198E1fa20f0538A587C3D3C50Cd0CF7CC67A9052",
+        EscrowVault: "0x8A962582446686b62D1F9d86dfe6D8c107f11357",
+        Compliance: "0x73B699A1e7AF652027194d35A7DB3eD0AD6DF399",
+        ProjectNFT: "0xc1E2682b9bDBB6341e346Bc4Dff9ccBB8fE0Bb09",
+        KYCManager: "0x2b5C3b768D44457330646B205B6fC35666Da5d34",
+        OffChainManager: "0x30B0C77426dd7c3BCBC845099BEE931aE00904a6",
+        Exchange: "0x99E6deBB20E6807904F8827D3b20aAe90353C9bC",
+        DividendDistributor: "0xf49f7F8af071c50fE732b2488d569737628dE75E",
+        MaxBalanceModule: "0x01B4286FdcBf99dFA42a06f90FB1058A397F7c2c",
+        LockupModule: "0x540Cf149653495998a9e9474244c3612FB5f7e8a",
+        RWATradeEscrow: "0xe7F8a504C53E3B5e4E954a442D3f2627dD19b8c4",
+        TokenizationFactory: "0x1EA30C3E4E4e47627013B3dcaBA81ABaD84b3768",
       },
     },
     tokens: {
@@ -124,7 +141,7 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       KYC_FEE: "50000000000000000",
       KYC_FEE_FORMATTED: "0.05",
     },
-    deployedAt: "2026-02-19",
+    deployedAt: "2026-02-20",
     version: "1.0.0",
   },
 
@@ -138,7 +155,7 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       USDT: "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
     },
     fees: {
-      CREATION_FEE: "100000000000000000", // 0.1 AVAX for mainnet
+      CREATION_FEE: "100000000000000000",
       CREATION_FEE_FORMATTED: "0.1",
       KYC_FEE: "100000000000000000",
       KYC_FEE_FORMATTED: "0.1",
@@ -166,9 +183,9 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
     },
     fees: {
-      CREATION_FEE: "5000000000000000000", // 5 MATIC
+      CREATION_FEE: "5000000000000000000",
       CREATION_FEE_FORMATTED: "5",
-      KYC_FEE: "10000000000000000000", // 10 MATIC
+      KYC_FEE: "10000000000000000000",
       KYC_FEE_FORMATTED: "10",
     },
   },
@@ -183,9 +200,9 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     },
     fees: {
-      CREATION_FEE: "5000000000000000", // 0.005 ETH
+      CREATION_FEE: "5000000000000000",
       CREATION_FEE_FORMATTED: "0.005",
-      KYC_FEE: "10000000000000000", // 0.01 ETH
+      KYC_FEE: "10000000000000000",
       KYC_FEE_FORMATTED: "0.01",
     },
   },
@@ -211,7 +228,7 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       USDT: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
     },
     fees: {
-      CREATION_FEE: "5000000000000000", // 0.005 ETH
+      CREATION_FEE: "5000000000000000",
       CREATION_FEE_FORMATTED: "0.005",
       KYC_FEE: "10000000000000000",
       KYC_FEE_FORMATTED: "0.01",
@@ -253,7 +270,7 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
   },
 
   // ========================================
-  // BNB Chain (placeholder)
+  // BNB Chain Mainnet (placeholder)
   // ========================================
   56: {
     ...EMPTY_DEPLOYMENT,
@@ -262,9 +279,26 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       USDT: "0x55d398326f99059fF775485246999027B3197955",
     },
     fees: {
-      CREATION_FEE: "10000000000000000", // 0.01 BNB
+      CREATION_FEE: "10000000000000000",
       CREATION_FEE_FORMATTED: "0.01",
       KYC_FEE: "50000000000000000",
+      KYC_FEE_FORMATTED: "0.05",
+    },
+  },
+
+  // ========================================
+  // BNB Chain Testnet (NEW)
+  // ========================================
+  97: {
+    ...EMPTY_DEPLOYMENT,
+    tokens: {
+      USDC: "0x64544969ed7EBf5f083679233325356EbE738930", // BSC Testnet USDC
+      USDT: "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd", // BSC Testnet USDT
+    },
+    fees: {
+      CREATION_FEE: "10000000000000000",   // 0.01 tBNB
+      CREATION_FEE_FORMATTED: "0.01",
+      KYC_FEE: "50000000000000000",        // 0.05 tBNB
       KYC_FEE_FORMATTED: "0.05",
     },
   },

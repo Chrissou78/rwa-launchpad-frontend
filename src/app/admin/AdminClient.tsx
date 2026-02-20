@@ -213,11 +213,11 @@ export default function AdminClient() {
     isDeployed,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   const projectNFTAddress = contracts?.RWAProjectNFT as Address | undefined;
-  const deployedChains = getDeployedChains();
+
 
   // State
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');

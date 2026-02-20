@@ -130,10 +130,9 @@ export default function ProjectsClient() {
     isDeployed,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
-  const deployedChains = getDeployedChains();
   const projectNFTAddress = contracts?.RWAProjectNFT as `0x${string}` | undefined;
 
   const [projects, setProjects] = useState<Project[]>([]);

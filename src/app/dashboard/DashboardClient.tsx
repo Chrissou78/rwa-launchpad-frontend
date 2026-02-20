@@ -116,7 +116,7 @@ export default function DashboardClient() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains,
+    deployedChains,
   } = useChainConfig();
 
   // Dynamic contract addresses
@@ -276,9 +276,6 @@ export default function DashboardClient() {
 
     loadDashboard();
   }, [publicClient, address, isDeployed, isWrongChain, identityRegistryAddress, projectNFTAddress]);
-
-  // Get deployed chains for network switcher
-  const deployedChains = getDeployedChains();
 
   // Network badge component
   const NetworkBadge = () => (

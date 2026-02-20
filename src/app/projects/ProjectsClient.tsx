@@ -1,4 +1,4 @@
-// src/app/projects/page.tsx
+// src/app/projects/ProjectsClient.tsx
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -287,7 +287,7 @@ function ProjectCard({ project, chainName, isTestnet }: ProjectCardProps) {
 // MAIN PAGE COMPONENT
 // ============================================================================
 
-export default function ProjectsPage() {
+export default function ProjectsClient() {
   // Wagmi hooks
   const publicClient = usePublicClient();
   const walletChainId = useChainId();
@@ -303,7 +303,7 @@ export default function ProjectsPage() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   // Check for wrong chain
@@ -478,7 +478,6 @@ export default function ProjectsPage() {
 
   // Network not supported view
   if (!isDeployed) {
-    const deployedChains = getDeployedChains();
     
     return (
       <div className="min-h-screen bg-gray-900">

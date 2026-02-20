@@ -39,7 +39,7 @@ export default function CrowdfundingClient() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains,
+    deployedChains,
   } = useChainConfig();
 
   // Check if on wrong chain
@@ -56,9 +56,6 @@ export default function CrowdfundingClient() {
       console.error('Failed to switch network:', error);
     }
   }, [switchToChain]);
-
-  // Get deployed chains
-  const deployedChains = getDeployedChains();
 
   const howItWorks = [
     {

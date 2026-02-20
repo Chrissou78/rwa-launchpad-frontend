@@ -91,11 +91,10 @@ export default function FactorySettings() {
     isDeployed,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   const publicClient = usePublicClient();
-  const deployedChains = getDeployedChains();
   const currencySymbol = nativeCurrency?.symbol || 'ETH';
 
   // Factory contract address

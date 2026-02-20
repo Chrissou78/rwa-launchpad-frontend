@@ -5,7 +5,7 @@ import { http, createConfig, type Config } from 'wagmi';
 import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors';
 import type { Chain, Transport } from 'viem';
 import { CHAINS, type SupportedChainId } from '@/config/chains';
-import { DEPLOYMENTS, getDeployedChainIds } from '@/config/deployments';
+import { getDeployedChainIds } from '@/config/deployments';
 
 // =============================================================================
 // CHAIN DEFINITIONS
@@ -53,6 +53,7 @@ function getExplorerName(chainId: SupportedChainId): string {
     8453: 'BaseScan',
     10: 'Optimism Explorer',
     56: 'BscScan',
+    97: 'BscScan',  // ✅ NEW
   };
   return explorerNames[chainId] || 'Explorer';
 }
@@ -65,6 +66,7 @@ function getExplorerName(chainId: SupportedChainId): string {
 export const avalancheFuji = buildChain(43113);
 export const polygonAmoy = buildChain(80002);
 export const sepolia = buildChain(11155111);
+export const bnbTestnet = buildChain(97);  // ✅ NEW
 
 // Mainnets
 export const avalanche = buildChain(43114);
@@ -86,8 +88,8 @@ export const hardhat: Chain = {
   testnet: true,
 };
 
-// All chains mapped by ID
-export const ALL_CHAINS: Record<SupportedChainId, Chain> = {
+// All chains mapped by ID (excluding hardhat from SupportedChainId)
+export const ALL_CHAINS: Record<SupportedChainId | 31337, Chain> = {
   43113: avalancheFuji,
   43114: avalanche,
   137: polygon,
@@ -98,6 +100,7 @@ export const ALL_CHAINS: Record<SupportedChainId, Chain> = {
   8453: base,
   10: optimism,
   56: bnbChain,
+  97: bnbTestnet,  // ✅ NEW
   31337: hardhat,
 };
 
@@ -115,16 +118,20 @@ const deployedChains: [Chain, ...Chain[]] = deployedChainIds.length > 0
 
 // Option: Include all chains (deployed + not deployed) for flexibility
 const allSupportedChains: [Chain, ...Chain[]] = [
+  // Testnets first for easier development
   avalancheFuji,
+  polygonAmoy,
+  sepolia,
+  bnbTestnet,  // ✅ NEW
+  // Mainnets
   avalanche,
   polygon,
-  polygonAmoy,
   ethereum,
-  sepolia,
   arbitrum,
   base,
   optimism,
   bnbChain,
+  // Local dev
   ...(process.env.NODE_ENV === 'development' ? [hardhat] : []),
 ] as [Chain, ...Chain[]];
 

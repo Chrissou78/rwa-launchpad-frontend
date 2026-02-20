@@ -5,6 +5,7 @@ import { isAdmin } from '@/lib/admin';
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin();
     const walletAddress = request.headers.get('x-wallet-address');
     
     if (!walletAddress || !isAdmin(walletAddress)) {

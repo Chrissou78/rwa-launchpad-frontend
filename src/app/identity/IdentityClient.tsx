@@ -52,7 +52,7 @@ export default function IdentityClient() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
 
   // Check for wrong chain
@@ -152,8 +152,6 @@ export default function IdentityClient() {
 
   // Network not supported view
   if (!isDeployed) {
-    const deployedChains = getDeployedChains();
-    
     return (
       <div className="min-h-screen bg-gray-900">
         <Header />

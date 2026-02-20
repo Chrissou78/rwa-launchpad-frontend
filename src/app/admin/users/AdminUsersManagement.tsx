@@ -66,7 +66,7 @@ export default function AdminUsersManagement() {
     nativeCurrency,
     switchToChain,
     isSwitching,
-    getDeployedChains
+    deployedChains
   } = useChainConfig();
   
   const { role, isAdmin, isSuperAdmin, admins, promoteUser, demoteUser, refreshAdmins } = useAdmin();
@@ -80,9 +80,6 @@ export default function AdminUsersManagement() {
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [loadingActivityLog, setLoadingActivityLog] = useState(false);
-
-  // Get deployed chains for network switching
-  const deployedChains = getDeployedChains();
 
   // Fetch activity log with chain context
   const fetchActivityLog = async () => {

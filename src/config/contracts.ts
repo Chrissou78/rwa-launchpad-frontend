@@ -5,12 +5,62 @@ import { CHAINS, SupportedChainId, ChainInfo } from "./chains";
 import { 
   DEPLOYMENTS, 
   DeploymentData, 
-  ContractsConfig, 
-  TokensConfig, 
-  FeesConfig,
   isChainDeployed, 
   getDeployedChainIds 
 } from "./deployments";
+
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
+export interface ContractsConfig {
+  // Core contracts
+  RWAProjectNFT: string;
+  RWALaunchpadFactory: string;
+  KYCManager: string;
+  RWATokenizationFactory: string;
+  RWATradeEscrow: string;  // ✅ NEW
+  
+  // Identity contracts
+  IdentityRegistry: string;
+  IdentityRegistryStorage: string;
+  ClaimTopicsRegistry: string;
+  TrustedIssuersRegistry: string;
+  
+  // Other contracts
+  RWASecurityExchange: string;
+  OffChainInvestmentManager: string;
+  CountryRestrictModule: string;
+  AccreditedInvestorModule: string;
+  
+  // Implementation contracts
+  Implementations: {
+    SecurityToken: string;
+    EscrowVault: string;
+    Compliance: string;
+    ProjectNFT: string;
+    KYCManager: string;
+    OffChainManager: string;
+    Exchange: string;
+    DividendDistributor: string;
+    MaxBalanceModule: string;
+    LockupModule: string;
+    RWATradeEscrow: string;      // ✅ NEW
+    TokenizationFactory: string;  // ✅ NEW
+  };
+}
+
+export interface TokensConfig {
+  USDC: string;
+  USDT: string;
+}
+
+export interface FeesConfig {
+  CREATION_FEE: string;
+  CREATION_FEE_FORMATTED: string;
+  KYC_FEE: string;
+  KYC_FEE_FORMATTED: string;
+}
 
 // ============================================================================
 // CHAIN STATE MANAGEMENT
@@ -109,9 +159,45 @@ export const getNativeCurrency = (): string => getCurrentChain().nativeCurrency;
 export const getRpcUrl = (): string => getCurrentChain().rpcUrl;
 export const getIsTestnet = (): boolean => getCurrentChain().testnet;
 
-export const getContracts = (): ContractsConfig => getCurrentDeployment().contracts;
+export const getContracts = (): ContractsConfig => getCurrentDeployment().contracts as ContractsConfig;
 export const getTokens = (): TokensConfig => getCurrentDeployment().tokens;
 export const getFees = (): FeesConfig => getCurrentDeployment().fees;
+
+// ============================================================================
+// INDIVIDUAL CONTRACT GETTERS (for convenience)
+// ============================================================================
+
+export const getRWAProjectNFT = (): string => getContracts().RWAProjectNFT;
+export const getRWALaunchpadFactory = (): string => getContracts().RWALaunchpadFactory;
+export const getKYCManager = (): string => getContracts().KYCManager;
+export const getRWATokenizationFactory = (): string => getContracts().RWATokenizationFactory;
+export const getRWATradeEscrow = (): string => getContracts().RWATradeEscrow;  // ✅ NEW
+export const getRWASecurityExchange = (): string => getContracts().RWASecurityExchange;
+export const getOffChainInvestmentManager = (): string => getContracts().OffChainInvestmentManager;
+export const getIdentityRegistry = (): string => getContracts().IdentityRegistry;
+export const getIdentityRegistryStorage = (): string => getContracts().IdentityRegistryStorage;
+export const getClaimTopicsRegistry = (): string => getContracts().ClaimTopicsRegistry;
+export const getTrustedIssuersRegistry = (): string => getContracts().TrustedIssuersRegistry;
+export const getCountryRestrictModule = (): string => getContracts().CountryRestrictModule;
+export const getAccreditedInvestorModule = (): string => getContracts().AccreditedInvestorModule;
+
+// Implementation getters
+export const getSecurityTokenImpl = (): string => getContracts().Implementations.SecurityToken;
+export const getEscrowVaultImpl = (): string => getContracts().Implementations.EscrowVault;
+export const getComplianceImpl = (): string => getContracts().Implementations.Compliance;
+export const getProjectNFTImpl = (): string => getContracts().Implementations.ProjectNFT;
+export const getKYCManagerImpl = (): string => getContracts().Implementations.KYCManager;
+export const getOffChainManagerImpl = (): string => getContracts().Implementations.OffChainManager;
+export const getExchangeImpl = (): string => getContracts().Implementations.Exchange;
+export const getDividendDistributorImpl = (): string => getContracts().Implementations.DividendDistributor;
+export const getMaxBalanceModuleImpl = (): string => getContracts().Implementations.MaxBalanceModule;
+export const getLockupModuleImpl = (): string => getContracts().Implementations.LockupModule;
+export const getRWATradeEscrowImpl = (): string => getContracts().Implementations.RWATradeEscrow;  // ✅ NEW
+export const getTokenizationFactoryImpl = (): string => getContracts().Implementations.TokenizationFactory;  // ✅ NEW
+
+// Token getters
+export const getUSDC = (): string => getTokens().USDC;
+export const getUSDT = (): string => getTokens().USDT;
 
 // ============================================================================
 // PROXY-BASED EXPORTS (for backward compatibility)
@@ -161,7 +247,7 @@ export const IS_TESTNET = _initialChain.testnet;
 // ============================================================================
 
 export type { SupportedChainId, ChainInfo } from "./chains";
-export type { ContractsConfig, TokensConfig, FeesConfig, DeploymentData } from "./deployments";
+export type { DeploymentData } from "./deployments";
 export type ContractAddresses = ContractsConfig;
 export type TokenAddresses = TokensConfig;
 
@@ -182,7 +268,7 @@ export function getExplorerTokenUrl(address: string): string {
 }
 
 export function getContractsForChain(chainId: SupportedChainId): ContractsConfig {
-  return DEPLOYMENTS[chainId]?.contracts || DEPLOYMENTS[43113].contracts;
+  return (DEPLOYMENTS[chainId]?.contracts || DEPLOYMENTS[43113].contracts) as ContractsConfig;
 }
 
 export function getTokensForChain(chainId: SupportedChainId): TokensConfig {
@@ -218,6 +304,7 @@ export function debugCurrentConfig(): void {
   console.log(`║ Factory:         ${deployment.contracts.RWALaunchpadFactory}`);
   console.log(`║ KYCManager:      ${deployment.contracts.KYCManager}`);
   console.log(`║ TokenizationFac: ${deployment.contracts.RWATokenizationFactory}`);
+  console.log(`║ TradeEscrow:     ${deployment.contracts.RWATradeEscrow}`);  // ✅ NEW
   console.log("╠══════════════════════════════════════════════════════════════╣");
   console.log("║ TOKENS");
   console.log(`║ USDC:            ${deployment.tokens.USDC}`);

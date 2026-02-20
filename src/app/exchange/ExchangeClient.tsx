@@ -1,4 +1,4 @@
-// src/app/exchange/page.tsx
+// src/app/exchange/ExchangeClient.tsx
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -163,7 +163,7 @@ const ExtendedExchangeABI = [
   },
 ] as const;
 
-export default function ExchangePage() {
+export default function ExchangeClient() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const walletChainId = useChainId();
@@ -180,7 +180,7 @@ export default function ExchangePage() {
     isTestnet,
     switchToChain,
     isSwitching,
-    getDeployedChains,
+    deployedChains,
   } = useChainConfig();
 
   // Dynamic contract addresses
@@ -792,9 +792,6 @@ export default function ExchangePage() {
   const truncateAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
-
-  // Get deployed chains for network switcher
-  const deployedChains = getDeployedChains();
 
   // Network not supported view
   if (!isDeployed) {
