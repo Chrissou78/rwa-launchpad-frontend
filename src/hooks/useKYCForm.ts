@@ -3,9 +3,10 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useChainId, useSwitchChain, useReadContract } from 'wagmi';
-import { keccak256, toBytes, parseEther } from 'viem';
+import { keccak256, toBytes } from 'viem';
 import { useKYC, KYCTier } from '@/contexts/KYCContext';
-import { CONTRACTS, CHAIN_ID } from '@/config/contracts';
+import { useChainConfig } from '@/hooks/useChainConfig';
+import { ZERO_ADDRESS } from '@/config/contracts';
 import { KYCManagerABI } from '@/config/abis';
 import {
   validateIdDocument,
@@ -41,17 +42,38 @@ export type UpgradeStep = 'select' | 'form' | 'signing' | 'processing' | 'submit
 export function useKYCForm() {
   const { address, isConnected } = useAccount();
   const { kycData, tierLimits, formatLimit, refreshKYC } = useKYC();
-  const currentChainId = useChainId();
+  const walletChainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
+
+  // Multichain config
+  const {
+    chainId: currentChainId,
+    chainName,
+    contracts,
+    fees,
+    isDeployed,
+    nativeCurrency,
+    switchToChain,
+    isSwitching: isChainSwitching,
+  } = useChainConfig();
 
   // Contract write hooks
   const { writeContract, isPending: isWritePending, error: writeError } = useWriteContract();
 
   // ======================================
-  // CONTRACT READ - Pending Upgrade Check
+  // CONTRACT ADDRESS
   // ======================================
   
-  const kycManagerAddress = CONTRACTS.KYCManager as `0x${string}` | undefined;
+  const kycManagerAddress = useMemo(() => {
+    if (!contracts?.KYCManager || contracts.KYCManager === ZERO_ADDRESS) {
+      return undefined;
+    }
+    return contracts.KYCManager as `0x${string}`;
+  }, [contracts]);
+
+  // ======================================
+  // CONTRACT READS - Pending Upgrade Check
+  // ======================================
 
   // Check if user has a pending upgrade request
   const { 
@@ -63,7 +85,7 @@ export function useKYCForm() {
     functionName: 'hasUpgradePending',
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address && !!kycManagerAddress,
+      enabled: !!address && !!kycManagerAddress && isDeployed,
     }
   });
 
@@ -77,7 +99,7 @@ export function useKYCForm() {
     functionName: 'getUpgradeRequest',
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address && !!kycManagerAddress,
+      enabled: !!address && !!kycManagerAddress && isDeployed,
     }
   });
 
@@ -151,6 +173,12 @@ export function useKYCForm() {
   // ======================================
   // DERIVED STATE
   // ======================================
+
+  // Get KYC fee from chain config
+  const kycFee = useMemo(() => {
+    if (!fees?.KYC_FEE) return BigInt(0);
+    return BigInt(fees.KYC_FEE);
+  }, [fees]);
 
   // Pending upgrade from contract
   const hasPendingUpgrade = useMemo(() => {
@@ -288,6 +316,11 @@ export function useKYCForm() {
     return DOCUMENT_TYPES[documentType].requiresBack;
   }, [documentType]);
 
+  // Check if wallet is on the correct chain
+  const isWrongChain = useMemo(() => {
+    return walletChainId !== currentChainId;
+  }, [walletChainId, currentChainId]);
+
   // ======================================
   // EFFECTS
   // ======================================
@@ -317,12 +350,12 @@ export function useKYCForm() {
     loadCountries();
   }, []);
 
-  // Refresh KYC on address change
+  // Refresh KYC on address or chain change
   useEffect(() => {
     if (address) {
       refreshKYC();
     }
-  }, [address, refreshKYC]);
+  }, [address, currentChainId, refreshKYC]);
 
   // Process backend verification on tx success
   useEffect(() => {
@@ -379,7 +412,13 @@ export function useKYCForm() {
 
   const handleTierSelect = useCallback((tier: number) => {
     if (tier <= effectiveApprovedTier) return;
-    if (hasAnyPendingRequest) return; // Block if any pending request
+    if (hasAnyPendingRequest) return;
+
+    // Check if contracts are deployed
+    if (!isDeployed) {
+      setFormError(`KYC is not available on ${chainName || 'this network'}. Please switch to a supported network.`);
+      return;
+    }
 
     setSelectedTier(tier);
     setUpgradeStep('form');
@@ -409,7 +448,7 @@ export function useKYCForm() {
     setAccreditedProof(null);
     setTermsAgreed(false);
     setLivenessResult(null);
-  }, [effectiveApprovedTier, hasAnyPendingRequest, kycData?.countryCode]);
+  }, [effectiveApprovedTier, hasAnyPendingRequest, kycData?.countryCode, isDeployed, chainName]);
 
   const handleLivenessComplete = useCallback((result: LivenessResult) => {
     setLivenessResult(result);
@@ -666,6 +705,12 @@ export function useKYCForm() {
   const validateForm = useCallback((): boolean => {
     setFormError(null);
 
+    // Check if deployed
+    if (!isDeployed) {
+      setFormError(`KYC is not available on ${chainName || 'this network'}. Please switch to a supported network.`);
+      return false;
+    }
+
     if (!termsAgreed) {
       setFormError('You must agree to the terms and conditions');
       return false;
@@ -755,9 +800,10 @@ export function useKYCForm() {
 
     return true;
   }, [
-    termsAgreed, upgradeRequirements, verifiedDocuments, fullName, email, dateOfBirth, countryCode,
-    countries, documentCapture, documentRequiresBack, documentType, idValidation,
-    selfie, faceDetectionStatus, livenessResult, addressProof, accreditedProof
+    isDeployed, chainName, termsAgreed, upgradeRequirements, verifiedDocuments, 
+    fullName, email, dateOfBirth, countryCode, countries, documentCapture, 
+    documentRequiresBack, documentType, idValidation, selfie, faceDetectionStatus, 
+    livenessResult, addressProof, accreditedProof
   ]);
 
   // Process backend verification
@@ -768,6 +814,7 @@ export function useKYCForm() {
       formData.append('requestedLevel', selectedTier.toString());
       formData.append('currentLevel', effectiveApprovedTier.toString());
       formData.append('isUpgrade', isUpgrade.toString());
+      formData.append('chainId', currentChainId.toString());
 
       if (txHash) {
         formData.append('txHash', txHash);
@@ -843,7 +890,6 @@ export function useKYCForm() {
         formData.append('livenessTotalChallenges', livenessResult.totalChallenges.toString());
       }
 
-      // Use a different variable name here to avoid conflict
       const submitResponse = await fetch('/api/kyc/submit', {
         method: 'POST',
         body: formData
@@ -880,7 +926,7 @@ export function useKYCForm() {
       setUpgradeStep('form');
     }
   }, [
-    address, selectedTier, effectiveApprovedTier, isUpgrade, txHash,
+    address, selectedTier, effectiveApprovedTier, isUpgrade, currentChainId, txHash,
     fullName, email, dateOfBirth, countryCode, documentNumber, expiryDate,
     documentType, documentCapture, selfie, addressProof, accreditedProof,
     faceScore, idValidation, livenessResult,
@@ -892,12 +938,19 @@ export function useKYCForm() {
     if (!validateForm()) return;
     if (!address) return;
 
+    // Check if deployed
+    if (!isDeployed || !kycManagerAddress) {
+      setSubmissionError(`KYC contracts are not deployed on ${chainName || 'this network'}.`);
+      return;
+    }
+
     setUpgradeStep('signing');
     setSubmissionError(null);
 
     try {
-      if (currentChainId !== CHAIN_ID) {
-        await switchChainAsync({ chainId: CHAIN_ID });
+      // Switch chain if needed
+      if (isWrongChain) {
+        await switchChainAsync({ chainId: currentChainId });
       }
 
       // Generate document hash string
@@ -911,49 +964,44 @@ export function useKYCForm() {
       // Create a unique hash string for the document
       const docHash = keccak256(toBytes(documentContent || `kyc-${address}-${Date.now()}`));
 
-      if (kycManagerAddress) {
-        if (isUpgrade) {
-          // requestUpgrade(uint8 _newLevel, string _documentHash) payable
-          writeContract({
-            address: kycManagerAddress,
-            abi: KYCManagerABI,
-            functionName: 'requestUpgrade',
-            args: [Number(selectedTier), docHash],
-            value: parseEther('0.05'),
-          }, {
-            onSuccess: (hash) => {
-              setTxHash(hash);
-              setUpgradeStep('processing');
-            },
-            onError: (error) => {
-              console.error('Contract write error:', error);
-              setSubmissionError(mapContractError(error));
-              setUpgradeStep('form');
-            }
-          });
-        } else {
-          // submitKYC(uint8 _level, string _documentHash, uint16 _countryCode) payable
-          writeContract({
-            address: kycManagerAddress,
-            abi: KYCManagerABI,
-            functionName: 'submitKYC',
-            args: [Number(selectedTier), docHash, Number(countryCode)],
-            value: parseEther('0.05'),
-          }, {
-            onSuccess: (hash) => {
-              setTxHash(hash);
-              setUpgradeStep('processing');
-            },
-            onError: (error) => {
-              console.error('Contract write error:', error);
-              setSubmissionError(mapContractError(error));
-              setUpgradeStep('form');
-            }
-          });
-        }
+      if (isUpgrade) {
+        // requestUpgrade(uint8 _newLevel, string _documentHash) payable
+        writeContract({
+          address: kycManagerAddress,
+          abi: KYCManagerABI,
+          functionName: 'requestUpgrade',
+          args: [Number(selectedTier), docHash],
+          value: kycFee,
+        }, {
+          onSuccess: (hash) => {
+            setTxHash(hash);
+            setUpgradeStep('processing');
+          },
+          onError: (error) => {
+            console.error('Contract write error:', error);
+            setSubmissionError(mapContractError(error));
+            setUpgradeStep('form');
+          }
+        });
       } else {
-        setUpgradeStep('processing');
-        await processBackendVerification();
+        // submitKYC(uint8 _level, string _documentHash, uint16 _countryCode) payable
+        writeContract({
+          address: kycManagerAddress,
+          abi: KYCManagerABI,
+          functionName: 'submitKYC',
+          args: [Number(selectedTier), docHash, Number(countryCode)],
+          value: kycFee,
+        }, {
+          onSuccess: (hash) => {
+            setTxHash(hash);
+            setUpgradeStep('processing');
+          },
+          onError: (error) => {
+            console.error('Contract write error:', error);
+            setSubmissionError(mapContractError(error));
+            setUpgradeStep('form');
+          }
+        });
       }
     } catch (error) {
       console.error('Submission error:', error);
@@ -961,9 +1009,9 @@ export function useKYCForm() {
       setUpgradeStep('form');
     }
   }, [
-    validateForm, address, currentChainId, switchChainAsync, selfie,
-    documentCapture, writeContract, selectedTier, countryCode, isUpgrade, 
-    kycManagerAddress, processBackendVerification
+    validateForm, address, isDeployed, kycManagerAddress, chainName, isWrongChain,
+    switchChainAsync, currentChainId, selfie, documentCapture, writeContract,
+    selectedTier, kycFee, countryCode, isUpgrade
   ]);
 
   const handleBackToSelect = useCallback(() => {
@@ -1000,6 +1048,15 @@ export function useKYCForm() {
     // Connection
     isConnected,
     address,
+
+    // Chain info
+    currentChainId,
+    chainName,
+    nativeCurrency,
+    isDeployed,
+    isWrongChain,
+    isChainSwitching,
+    kycFee,
 
     // Loading
     kycLoading,
@@ -1106,5 +1163,6 @@ export function useKYCForm() {
     handleFileChange,
     resetValidation,
     refreshKYC,
+    switchToChain,
   };
 }

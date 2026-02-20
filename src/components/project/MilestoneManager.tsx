@@ -1,17 +1,11 @@
 // src/components/project/MilestoneManager.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { createPublicClient, http, Address } from 'viem';
-import { avalancheFuji } from 'viem/chains';
+import { useState, useEffect, useMemo } from 'react';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { Address } from 'viem';
 import { RWAEscrowVaultABI } from '@/config/abis';
-import { RPC_URL } from '@/config/contracts';
-
-const publicClient = createPublicClient({
-  chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
-});
+import { useChainConfig } from '@/hooks/useChainConfig';
 
 const MILESTONE_STATUS: Record<number, { label: string; color: string }> = {
   0: { label: 'Pending', color: 'bg-gray-500/20 text-gray-400' },
@@ -50,9 +44,22 @@ interface MilestoneManagerProps {
 
 export default function MilestoneManager({ projectId, escrowVault, isOwner }: MilestoneManagerProps) {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
+  
+  // Multichain config
+  const {
+    chainId,
+    chainName,
+    isDeployed,
+    nativeCurrency,
+    explorerUrl,
+    getTxUrl,
+  } = useChainConfig();
+
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [fundingData, setFundingData] = useState<FundingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [selectedMilestoneIndex, setSelectedMilestoneIndex] = useState<number | null>(null);
@@ -62,25 +69,39 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
   const [newPercentage, setNewPercentage] = useState('');
   const [proofURI, setProofURI] = useState('');
 
-  const { writeContract: addMilestone, data: addHash } = useWriteContract();
-  const { writeContract: submitMilestone, data: submitHash } = useWriteContract();
+  const { writeContract: addMilestone, data: addHash, error: addError } = useWriteContract();
+  const { writeContract: submitMilestone, data: submitHash, error: submitError } = useWriteContract();
 
   const { isSuccess: addSuccess, isLoading: addPending } = useWaitForTransactionReceipt({ hash: addHash });
   const { isSuccess: submitSuccess, isLoading: submitPending } = useWaitForTransactionReceipt({ hash: submitHash });
 
+  // Validate escrow vault address
+  const escrowVaultAddress = useMemo(() => {
+    if (!escrowVault || escrowVault === '0x0000000000000000000000000000000000000000') {
+      return null;
+    }
+    return escrowVault as Address;
+  }, [escrowVault]);
+
   const loadData = async () => {
+    if (!publicClient || !escrowVaultAddress) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
+      setError(null);
       
       const [milestonesData, funding] = await Promise.all([
         publicClient.readContract({
-          address: escrowVault as Address,
+          address: escrowVaultAddress,
           abi: RWAEscrowVaultABI,
           functionName: 'getMilestones',
           args: [BigInt(projectId)],
         }),
         publicClient.readContract({
-          address: escrowVault as Address,
+          address: escrowVaultAddress,
           abi: RWAEscrowVaultABI,
           functionName: 'getProjectFunding',
           args: [BigInt(projectId)],
@@ -91,17 +112,20 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
       setFundingData(funding as unknown as FundingData);
     } catch (err) {
       console.error('Failed to load milestones:', err);
+      setError('Failed to load milestone data. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Load data when chain or escrow vault changes
   useEffect(() => {
-    if (escrowVault) {
+    if (escrowVaultAddress && publicClient) {
       loadData();
     }
-  }, [escrowVault, projectId]);
+  }, [escrowVaultAddress, projectId, chainId, publicClient]);
 
+  // Reload on successful transactions
   useEffect(() => {
     if (addSuccess || submitSuccess) {
       loadData();
@@ -114,9 +138,11 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
   }, [addSuccess, submitSuccess]);
 
   const handleAddMilestone = () => {
+    if (!escrowVaultAddress) return;
+    
     const percentage = Math.round(parseFloat(newPercentage) * 100); // Convert to basis points
     addMilestone({
-      address: escrowVault as Address,
+      address: escrowVaultAddress,
       abi: RWAEscrowVaultABI,
       functionName: 'addMilestone',
       args: [BigInt(projectId), newDescription, BigInt(percentage)],
@@ -124,9 +150,10 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
   };
 
   const handleSubmitMilestone = () => {
-    if (selectedMilestoneIndex === null) return;
+    if (selectedMilestoneIndex === null || !escrowVaultAddress) return;
+    
     submitMilestone({
-      address: escrowVault as Address,
+      address: escrowVaultAddress,
       abi: RWAEscrowVaultABI,
       functionName: 'submitMilestone',
       args: [BigInt(projectId), BigInt(selectedMilestoneIndex), proofURI],
@@ -146,11 +173,65 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
   const totalRaisedUSD = fundingData ? Number(fundingData.totalRaised) / 1e6 : 0;
   const totalReleasedUSD = fundingData ? Number(fundingData.totalReleased) / 1e6 : 0;
 
+  // Not deployed state
+  if (!isDeployed) {
+    return (
+      <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="text-center py-8">
+          <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">Not Available</h3>
+          <p className="text-slate-400">
+            Milestone management is not available on {chainName || 'this network'}.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // No escrow vault
+  if (!escrowVaultAddress) {
+    return (
+      <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="text-center py-8">
+          <p className="text-slate-400">No escrow vault configured for this project.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
   if (loading) {
     return (
       <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="text-center py-8">
+          <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">Error Loading Data</h3>
+          <p className="text-slate-400 mb-4">{error}</p>
+          <button
+            onClick={loadData}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -164,6 +245,11 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
           <p className="text-slate-400 text-sm mt-1">
             Total Raised: ${totalRaisedUSD.toLocaleString()} | Released: ${totalReleasedUSD.toLocaleString()}
           </p>
+          {chainName && (
+            <p className="text-slate-500 text-xs mt-1">
+              Network: {chainName}
+            </p>
+          )}
         </div>
         {isOwner && remainingPercentage > 0 && (
           <button
@@ -193,6 +279,26 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
           </p>
         )}
       </div>
+
+      {/* Escrow Contract Link */}
+      {explorerUrl && (
+        <div className="mb-4 p-3 bg-slate-700/50 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 text-sm">Escrow Contract</span>
+            <a
+              href={`${explorerUrl}/address/${escrowVaultAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"
+            >
+              {escrowVaultAddress.slice(0, 6)}...{escrowVaultAddress.slice(-4)}
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Milestones List */}
       {milestones.length === 0 ? (
@@ -283,6 +389,42 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
         </div>
       )}
 
+      {/* Transaction Status */}
+      {(addHash || submitHash) && (
+        <div className="mt-4 p-3 bg-slate-700/50 rounded-lg">
+          {addHash && (
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-sm">
+                {addPending ? 'Adding milestone...' : addSuccess ? 'Milestone added!' : 'Transaction pending'}
+              </span>
+              <a
+                href={getTxUrl(addHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 text-sm"
+              >
+                View TX
+              </a>
+            </div>
+          )}
+          {submitHash && (
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-sm">
+                {submitPending ? 'Submitting proof...' : submitSuccess ? 'Proof submitted!' : 'Transaction pending'}
+              </span>
+              <a
+                href={getTxUrl(submitHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 text-sm"
+              >
+                View TX
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add Milestone Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -293,6 +435,22 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
                 ✕
               </button>
             </div>
+
+            {/* Network info */}
+            {chainName && (
+              <div className="mb-4 p-2 bg-slate-700/50 rounded text-center">
+                <span className="text-slate-400 text-sm">Network: </span>
+                <span className="text-white text-sm">{chainName}</span>
+              </div>
+            )}
+
+            {addError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-red-400 text-sm">
+                  {addError.message || 'Failed to add milestone'}
+                </p>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div>
@@ -348,6 +506,22 @@ export default function MilestoneManager({ projectId, escrowVault, isOwner }: Mi
                 ✕
               </button>
             </div>
+
+            {/* Network info */}
+            {chainName && (
+              <div className="mb-4 p-2 bg-slate-700/50 rounded text-center">
+                <span className="text-slate-400 text-sm">Network: </span>
+                <span className="text-white text-sm">{chainName}</span>
+              </div>
+            )}
+
+            {submitError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-red-400 text-sm">
+                  {submitError.message || 'Failed to submit proof'}
+                </p>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div className="p-3 bg-slate-700/50 rounded-lg">

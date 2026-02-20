@@ -180,11 +180,11 @@ export default function TokenizationManagement({ onRefresh }: TokenizationManage
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
-      app.asset_name.toLowerCase().includes(query) ||
-      app.company_name.toLowerCase().includes(query) ||
-      app.contact_name.toLowerCase().includes(query) ||
-      app.email.toLowerCase().includes(query) ||
-      app.wallet_address.toLowerCase().includes(query)
+      app.asset_name?.toLowerCase().includes(query) ||
+      app.company_name?.toLowerCase().includes(query) ||
+      app.contact_name?.toLowerCase().includes(query) ||
+      app.email?.toLowerCase().includes(query) ||
+      app.user_address?.toLowerCase().includes(query)  // Correct field name
     );
   });
 
@@ -313,7 +313,7 @@ export default function TokenizationManagement({ onRefresh }: TokenizationManage
                         <div>
                           <p className="text-white font-medium">{app.asset_name}</p>
                           <p className="text-gray-500 text-xs font-mono">
-                            {app.wallet_address.slice(0, 6)}...{app.wallet_address.slice(-4)}
+                            {app.user_address.slice(0, 6)}...{app.user_address.slice(-4)}
                           </p>
                         </div>
                       </td>
@@ -492,7 +492,7 @@ export default function TokenizationManagement({ onRefresh }: TokenizationManage
                   <div className="md:col-span-2">
                     <span className="text-gray-400">Wallet:</span>
                     <span className="text-white ml-2 font-mono text-xs bg-gray-600 px-2 py-1 rounded">
-                      {selectedApp.wallet_address}
+                      {selectedApp.user_address}
                     </span>
                   </div>
                 </div>
@@ -516,7 +516,7 @@ export default function TokenizationManagement({ onRefresh }: TokenizationManage
                     </div>
                     <div>
                       <span className="text-gray-400">Use Case:</span>
-                      <span className="text-white ml-2">{selectedApp.use_case.replace(/_/g, ' ')}</span>
+                      <span className="text-white ml-2">{selectedApp.use_case?.replace(/_/g, ' ') || 'N/A'}</span>
                     </div>
                     <div>
                       <span className="text-gray-400">Fee:</span>
@@ -561,32 +561,46 @@ export default function TokenizationManagement({ onRefresh }: TokenizationManage
               )}
 
               {/* Documents */}
-              {selectedApp.documents && selectedApp.documents.length > 0 && (
-                <div className="bg-gray-700/50 rounded-lg p-4">
-                  <h4 className="text-white font-medium mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-cyan-400" />
-                    Documents ({selectedApp.documents.length})
-                  </h4>
-                  <div className="space-y-2">
-                    {selectedApp.documents.map((doc: TokenizationDocument, idx: number) => (
-                      <a
-                        key={idx}
-                        href={doc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 p-3 bg-gray-600/50 rounded-lg hover:bg-gray-600 transition group"
-                      >
-                        <FileText className="w-5 h-5 text-gray-400 group-hover:text-white" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm truncate">{doc.name}</p>
-                          <p className="text-gray-500 text-xs">{doc.type} • {(doc.size / 1024).toFixed(1)} KB</p>
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                      </a>
-                    ))}
+              {(() => {
+                let docs: TokenizationDocument[] = [];
+                try {
+                  const parsed = typeof selectedApp.documents === 'string' 
+                    ? JSON.parse(selectedApp.documents) 
+                    : selectedApp.documents;
+                  docs = parsed?.files || (Array.isArray(parsed) ? parsed : []);
+                } catch (e) {
+                  docs = [];
+                }
+                
+                if (docs.length === 0) return null;
+                
+                return (
+                  <div className="bg-gray-700/50 rounded-lg p-4">
+                    <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-cyan-400" />
+                      Documents ({docs.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {docs.map((doc: TokenizationDocument, idx: number) => (
+                        <a
+                          key={idx}
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 bg-gray-600/50 rounded-lg hover:bg-gray-600 transition group"
+                        >
+                          <FileText className="w-5 h-5 text-gray-400 group-hover:text-white" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm truncate">{doc.name}</p>
+                            <p className="text-gray-500 text-xs">{doc.type} • {((doc.size || 0) / 1024).toFixed(1)} KB</p>
+                          </div>
+                          <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                        </a>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Deployment Info */}
               {selectedApp.status === 'completed' && (selectedApp.token_address || selectedApp.nft_address) && (
@@ -642,10 +656,7 @@ export default function TokenizationManagement({ onRefresh }: TokenizationManage
                         className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
                       >
                         <option value="pending">Pending Review</option>
-                        <option value="under_review">Under Review</option>
                         <option value="approved">Approved</option>
-                        <option value="payment_pending">Payment Pending</option>
-                        <option value="payment_confirmed">Payment Confirmed</option>
                         <option value="creation_ready">Ready to Create</option>
                         <option value="completed">Completed</option>
                         <option value="rejected">Rejected</option>

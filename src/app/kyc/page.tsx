@@ -1,12 +1,14 @@
 // src/app/kyc/page.tsx
 'use client';
 
+import { useMemo } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import LivenessCheck from '@/components/LivenessCheck';
-import { EXPLORER_URL } from '@/config/contracts';
 import { DOCUMENT_TYPES } from '@/lib/documentValidation';
 import { useKYCForm } from '@/hooks/useKYCForm';
+import { useChainConfig } from '@/hooks/useChainConfig';
+import { useChainId, useAccount } from 'wagmi';
 import {
   OCRProgressBar,
   ErrorDisplay,
@@ -41,9 +43,98 @@ const VerifiedBadge = ({ title, description }: { title: string; description: str
   </div>
 );
 
+// Network indicator component
+const NetworkIndicator = ({ 
+  chainName, 
+  isTestnet, 
+  nativeCurrency,
+  explorerUrl,
+  contractAddress
+}: { 
+  chainName: string; 
+  isTestnet: boolean;
+  nativeCurrency: string;
+  explorerUrl: string;
+  contractAddress?: string;
+}) => (
+  <div className={`rounded-xl p-4 mb-6 border ${
+    isTestnet 
+      ? 'bg-yellow-500/10 border-yellow-500/30' 
+      : 'bg-green-500/10 border-green-500/30'
+  }`}>
+    <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center gap-3">
+        <div className={`w-3 h-3 rounded-full ${isTestnet ? 'bg-yellow-400' : 'bg-green-400'}`} />
+        <div>
+          <span className={`font-medium ${isTestnet ? 'text-yellow-400' : 'text-green-400'}`}>
+            {chainName}
+          </span>
+          {isTestnet && (
+            <span className="ml-2 text-xs text-yellow-400/70">(Testnet)</span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-4 text-sm">
+        <span className="text-gray-400">
+          Gas: <span className="text-white">{nativeCurrency}</span>
+        </span>
+        {contractAddress && (
+          <a
+            href={`${explorerUrl}/address/${contractAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-purple-400 hover:text-purple-300 flex items-center gap-1"
+          >
+            View Contract
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
 export default function KYCPage() {
   const form = useKYCForm();
   const isMobile = isMobileDevice();
+  
+  // Wagmi hooks for wallet chain detection
+  const walletChainId = useChainId();
+  const { isConnected } = useAccount();
+  
+  // Chain config for multichain support
+  const {
+    chainId,
+    chainName,
+    contracts,
+    explorerUrl,
+    nativeCurrency,
+    isDeployed,
+    isTestnet,
+    switchToChain,
+    isSwitching,
+    getDeployedChains
+  } = useChainConfig();
+
+  // Check for wrong chain
+  const isWrongChain = useMemo(() => 
+    isConnected && walletChainId !== chainId,
+    [isConnected, walletChainId, chainId]
+  );
+
+  // Get KYC manager contract address
+  const kycManagerAddress = contracts?.KYCManager;
+
+  // Handle network switch
+  const handleSwitchNetwork = async (targetChainId: number) => {
+    try {
+      await switchToChain(targetChainId);
+    } catch (err) {
+      console.error('Failed to switch network:', err);
+    }
+  };
 
   // ======================================
   // RENDER HELPERS
@@ -1131,7 +1222,7 @@ export default function KYCPage() {
         </p>
         {form.txHash && (
           <a
-            href={`${EXPLORER_URL}/tx/${form.txHash}`}
+            href={`${explorerUrl}/tx/${form.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors"
@@ -1263,7 +1354,7 @@ export default function KYCPage() {
 
         {form.txHash && (
           <a
-            href={`${EXPLORER_URL}/tx/${form.txHash}`}
+            href={`${explorerUrl}/tx/${form.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors mb-6"
@@ -1313,6 +1404,88 @@ export default function KYCPage() {
     );
   }
 
+  // Network not supported
+  if (!isDeployed) {
+    const deployedChains = getDeployedChains();
+    
+    return (
+      <>
+        <Header />
+        <main className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-black pt-24 pb-12 px-4">
+          <div className="max-w-lg mx-auto text-center py-12">
+            <div className="w-20 h-20 mx-auto bg-yellow-500/20 rounded-full flex items-center justify-center mb-6">
+              <svg className="w-10 h-10 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-4">Network Not Supported</h2>
+            <p className="text-gray-400 mb-8">
+              KYC verification is not available on {chainName}. Please switch to a supported network.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              {deployedChains.slice(0, 4).map((chain) => (
+                <button
+                  key={chain.chainId}
+                  onClick={() => handleSwitchNetwork(chain.chainId)}
+                  disabled={isSwitching}
+                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded-xl text-white font-medium transition-colors flex items-center gap-2"
+                >
+                  {isSwitching && (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  )}
+                  {chain.name}
+                  {chain.isTestnet && (
+                    <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
+                      Testnet
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  // Wrong chain warning
+  if (isWrongChain) {
+    return (
+      <>
+        <Header />
+        <main className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-black pt-24 pb-12 px-4">
+          <div className="max-w-md mx-auto text-center py-12">
+            <div className="w-20 h-20 mx-auto bg-orange-500/20 rounded-full flex items-center justify-center mb-6">
+              <svg className="w-10 h-10 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-4">Wrong Network</h2>
+            <p className="text-gray-400 mb-8">
+              Please switch to {chainName} to continue with KYC verification.
+            </p>
+            <button
+              onClick={() => handleSwitchNetwork(chainId)}
+              disabled={isSwitching}
+              className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded-xl text-white font-medium transition-colors flex items-center gap-2 mx-auto"
+            >
+              {isSwitching && (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              Switch to {chainName}
+            </button>
+          </div>
+        </main>
+      </>
+    );
+  }
+
   if (form.kycLoading) {
     return (
       <>
@@ -1323,7 +1496,7 @@ export default function KYCPage() {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <p className="text-gray-400">Loading KYC status...</p>
+            <p className="text-gray-400">Loading KYC status from {chainName}...</p>
           </div>
         </main>
       </>
@@ -1344,6 +1517,15 @@ export default function KYCPage() {
               Complete identity verification to unlock higher investment limits and access premium features.
             </p>
           </div>
+
+          {/* Network Indicator */}
+          <NetworkIndicator
+            chainName={chainName}
+            isTestnet={isTestnet}
+            nativeCurrency={nativeCurrency}
+            explorerUrl={explorerUrl}
+            contractAddress={kycManagerAddress}
+          />
 
           {/* Status Banners */}
           {renderCurrentTierBanner()}

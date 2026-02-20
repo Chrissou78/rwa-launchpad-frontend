@@ -1,13 +1,13 @@
 // src/app/projects/[id]/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { createPublicClient, http, formatUnits, parseUnits, formatEther, Address } from 'viem';
-import { avalancheFuji } from 'viem/chains';
-import { ZERO_ADDRESS, RPC_URL, CONTRACTS, EXPLORER_URL } from '@/config/contracts';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient, useChainId } from 'wagmi';
+import { formatUnits, parseUnits, formatEther, Address } from 'viem';
+import { useChainConfig } from '@/hooks/useChainConfig';
+import { ZERO_ADDRESS } from '@/config/contracts';
 import Header from '@/components/Header';
 import StripeInvestment from '@/components/invest/StripeInvestment';
 import { useKYC } from '@/contexts/KYCContext';
@@ -24,16 +24,6 @@ import {
 // ============================================================================
 // CONSTANTS & CONFIG
 // ============================================================================
-
-const publicClient = createPublicClient({
-  chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
-});
-
-const TOKENS: Record<string, { address: Address; symbol: string; decimals: number }> = {
-  USDC: { address: CONTRACTS.USDC as Address, symbol: 'USDC', decimals: 6 },
-  USDT: { address: CONTRACTS.USDT as Address, symbol: 'USDT', decimals: 6 },
-};
 
 const STATUS_LABELS: Record<number, string> = {
   0: 'Draft',
@@ -121,6 +111,12 @@ interface InvestorDetails {
   actualTokenBalance: bigint;
 }
 
+interface TokenConfig {
+  address: Address;
+  symbol: string;
+  decimals: number;
+}
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -178,24 +174,27 @@ interface ContractInfoBubbleProps {
   deployment: DeploymentRecord | null;
   project: Project;
   loading: boolean;
+  explorerUrl: string;
+  chainName: string;
+  contracts: Record<string, string> | null;
 }
 
-function ContractInfoBubble({ deployment, project, loading }: ContractInfoBubbleProps) {
+function ContractInfoBubble({ deployment, project, loading, explorerUrl, chainName, contracts }: ContractInfoBubbleProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const contracts = [
-    { label: 'Project NFT', address: CONTRACTS.RWAProjectNFT, type: 'global' },
+  const contractList = useMemo(() => [
+    { label: 'Project NFT', address: contracts?.RWAProjectNFT, type: 'global' },
     { label: 'Security Token', address: project.securityToken, type: 'project' },
     { label: 'Escrow Vault', address: project.escrowVault, type: 'project' },
     { label: 'Compliance', address: deployment?.compliance, type: 'project' },
     { label: 'Dividend Distributor', address: deployment?.dividendDistributor, type: 'project' },
     { label: 'Max Balance Module', address: deployment?.maxBalanceModule, type: 'module' },
     { label: 'Lockup Module', address: deployment?.lockupModule, type: 'module' },
-    { label: 'Identity Registry', address: CONTRACTS.IdentityRegistry, type: 'global' },
-  ];
+    { label: 'Identity Registry', address: contracts?.IdentityRegistry, type: 'global' },
+  ], [contracts, project, deployment]);
 
-  const visibleContracts = expanded ? contracts : contracts.slice(0, 4);
-  const hiddenCount = contracts.length - 4;
+  const visibleContracts = expanded ? contractList : contractList.slice(0, 4);
+  const hiddenCount = contractList.length - 4;
 
   return (
     <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
@@ -207,7 +206,7 @@ function ContractInfoBubble({ deployment, project, loading }: ContractInfoBubble
           </div>
           <div>
             <h2 className="text-lg font-semibold text-white">Smart Contracts</h2>
-            <p className="text-slate-400 text-sm">Deployed contract addresses for this project</p>
+            <p className="text-slate-400 text-sm">Deployed on {chainName}</p>
           </div>
         </div>
       </div>
@@ -243,7 +242,7 @@ function ContractInfoBubble({ deployment, project, loading }: ContractInfoBubble
                   {isValid ? (
                     <div className="flex items-center gap-2">
                       <a
-                        href={`${EXPLORER_URL}/address/${contract.address}`}
+                        href={`${explorerUrl}/address/${contract.address}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 hover:text-blue-300 text-sm font-mono transition"
@@ -260,7 +259,7 @@ function ContractInfoBubble({ deployment, project, loading }: ContractInfoBubble
                         </svg>
                       </button>
                       <a
-                        href={`${EXPLORER_URL}/address/${contract.address}`}
+                        href={`${explorerUrl}/address/${contract.address}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-600 rounded transition"
@@ -312,7 +311,7 @@ function ContractInfoBubble({ deployment, project, loading }: ContractInfoBubble
             <span>
               Deployed by{' '}
               <a
-                href={`${EXPLORER_URL}/address/${deployment.deployer}`}
+                href={`${explorerUrl}/address/${deployment.deployer}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-400 hover:text-blue-300"
@@ -375,6 +374,9 @@ interface InvestModalProps {
   kycRemainingLimit: number;
   kycTier: string;
   transactionFee: bigint;
+  tokens: Record<string, TokenConfig>;
+  nativeCurrency: string;
+  publicClient: any;
 }
 
 function InvestModal({ 
@@ -385,17 +387,21 @@ function InvestModal({
   onSuccess, 
   kycRemainingLimit, 
   kycTier,
-  transactionFee 
+  transactionFee,
+  tokens,
+  nativeCurrency,
+  publicClient
 }: InvestModalProps) {
   const { address } = useAccount();
-  const [selectedToken, setSelectedToken] = useState<'USDC' | 'USDT'>('USDC');
+  const [selectedToken, setSelectedToken] = useState<string>('USDC');
   const [amount, setAmount] = useState('');
   const [step, setStep] = useState<'input' | 'approve' | 'invest'>('input');
   const [balance, setBalance] = useState<bigint>(0n);
   const [allowance, setAllowance] = useState<bigint>(0n);
 
-  const token = TOKENS[selectedToken];
-  const amountInWei = amount ? parseUnits(amount, token.decimals) : 0n;
+  const availableTokens = useMemo(() => Object.keys(tokens), [tokens]);
+  const token = tokens[selectedToken];
+  const amountInWei = amount && token ? parseUnits(amount, token.decimals) : 0n;
   const minInvestment = Number(project.minInvestment);
 
   const { writeContract: approve, data: approveHash } = useWriteContract();
@@ -405,7 +411,7 @@ function InvestModal({
   const { isSuccess: investSuccess } = useWaitForTransactionReceipt({ hash: investHash });
 
   useEffect(() => {
-    if (!address || !project.escrowVault) return;
+    if (!address || !project.escrowVault || !token || !publicClient) return;
 
     const loadBalances = async () => {
       try {
@@ -431,10 +437,10 @@ function InvestModal({
     };
 
     loadBalances();
-  }, [address, selectedToken, token.address, project.escrowVault]);
+  }, [address, selectedToken, token, project.escrowVault, publicClient]);
 
   useEffect(() => {
-    if (approveSuccess && address && project.escrowVault) {
+    if (approveSuccess && address && project.escrowVault && token && publicClient) {
       const refetchAllowance = async () => {
         try {
           const newAllowance = await publicClient.readContract({
@@ -453,7 +459,7 @@ function InvestModal({
       };
       refetchAllowance();
     }
-  }, [approveSuccess, address, token.address, project.escrowVault, amountInWei]);
+  }, [approveSuccess, address, token, project.escrowVault, amountInWei, publicClient]);
 
   useEffect(() => {
     if (investSuccess) {
@@ -462,6 +468,7 @@ function InvestModal({
   }, [investSuccess, onSuccess]);
 
   const handleApprove = () => {
+    if (!token) return;
     setStep('approve');
     approve({
       address: token.address,
@@ -472,6 +479,7 @@ function InvestModal({
   };
 
   const handleInvest = () => {
+    if (!token) return;
     invest({
       address: project.escrowVault as Address,
       abi: RWAEscrowVaultABI,
@@ -483,7 +491,7 @@ function InvestModal({
 
   const needsApproval = allowance < amountInWei;
   const amountNum = Number(amount) || 0;
-  const balanceNum = Number(formatUnits(balance, token.decimals));
+  const balanceNum = token ? Number(formatUnits(balance, token.decimals)) : 0;
   
   const isValidAmount =
     amountNum >= minInvestment &&
@@ -491,7 +499,7 @@ function InvestModal({
     amountInWei <= balance;
 
   const maxUserCanInvest = Math.min(effectiveMaxInvestment, balanceNum);
-  const feeInPOL = formatEther(transactionFee);
+  const feeDisplay = formatEther(transactionFee);
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -504,7 +512,7 @@ function InvestModal({
         <div className="mb-4">
           <label className="block text-sm text-slate-400 mb-2">Payment Token</label>
           <div className="flex gap-2">
-            {(['USDC', 'USDT'] as const).map((t) => (
+            {availableTokens.map((t) => (
               <button
                 key={t}
                 onClick={() => setSelectedToken(t)}
@@ -570,7 +578,7 @@ function InvestModal({
                 <span className="text-purple-400">⛽</span>
                 <span className="text-slate-300 text-sm">Transaction Fee</span>
               </div>
-              <span className="text-purple-400 font-medium">{feeInPOL} POL</span>
+              <span className="text-purple-400 font-medium">{feeDisplay} {nativeCurrency}</span>
             </div>
           </div>
         )}
@@ -602,7 +610,7 @@ function InvestModal({
                 >
                   Invest {amount} {selectedToken}
                   {transactionFee > 0n && (
-                    <span className="text-blue-200 text-sm ml-1">(+ {feeInPOL} POL)</span>
+                    <span className="text-blue-200 text-sm ml-1">(+ {feeDisplay} {nativeCurrency})</span>
                   )}
                 </button>
               )}
@@ -623,7 +631,7 @@ function InvestModal({
             >
               Confirm Investment
               {transactionFee > 0n && (
-                <span className="text-blue-200 text-sm ml-1">(+ {feeInPOL} POL)</span>
+                <span className="text-blue-200 text-sm ml-1">(+ {feeDisplay} {nativeCurrency})</span>
               )}
             </button>
           )}
@@ -652,9 +660,10 @@ interface RefundSectionProps {
   investorDetails: InvestorDetails;
   onRefundSuccess: () => void;
   transactionFee: bigint;
+  nativeCurrency: string;
 }
 
-function RefundSection({ project, investorDetails, onRefundSuccess, transactionFee }: RefundSectionProps) {
+function RefundSection({ project, investorDetails, onRefundSuccess, transactionFee, nativeCurrency }: RefundSectionProps) {
   const { writeContract: claimRefund, data: refundHash } = useWriteContract();
   const { isSuccess: refundSuccess, isLoading: refundPending } = useWaitForTransactionReceipt({
     hash: refundHash,
@@ -680,7 +689,7 @@ function RefundSection({ project, investorDetails, onRefundSuccess, transactionF
     return null;
   }
 
-  const feeInPOL = formatEther(transactionFee);
+  const feeDisplay = formatEther(transactionFee);
 
   return (
     <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
@@ -689,7 +698,7 @@ function RefundSection({ project, investorDetails, onRefundSuccess, transactionF
         This project has been cancelled. You can claim a refund of your investment.
       </p>
       {transactionFee > 0n && (
-        <p className="text-slate-400 text-sm mb-4">Transaction fee: {feeInPOL} POL</p>
+        <p className="text-slate-400 text-sm mb-4">Transaction fee: {feeDisplay} {nativeCurrency}</p>
       )}
       <div className="flex items-center justify-between">
         <span className="text-white font-semibold">
@@ -700,7 +709,7 @@ function RefundSection({ project, investorDetails, onRefundSuccess, transactionF
           disabled={refundPending}
           className="px-6 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 rounded-lg text-white font-semibold transition"
         >
-          {refundPending ? 'Processing...' : `Claim Refund${transactionFee > 0n ? ` (+ ${feeInPOL} POL)` : ''}`}
+          {refundPending ? 'Processing...' : `Claim Refund${transactionFee > 0n ? ` (+ ${feeDisplay} ${nativeCurrency})` : ''}`}
         </button>
       </div>
     </div>
@@ -717,9 +726,10 @@ interface ClaimTokensSectionProps {
   claimFeeBps: number;
   transactionFee: bigint;
   onClaimSuccess: () => void;
+  nativeCurrency: string;
 }
 
-function ClaimTokensSection({ project, investorDetails, claimFeeBps, transactionFee, onClaimSuccess }: ClaimTokensSectionProps) {
+function ClaimTokensSection({ project, investorDetails, claimFeeBps, transactionFee, onClaimSuccess, nativeCurrency }: ClaimTokensSectionProps) {
   const { writeContract: claimTokens, data: claimHash } = useWriteContract();
   const { isSuccess: claimSuccess, isLoading: claimPending } = useWaitForTransactionReceipt({
     hash: claimHash,
@@ -749,7 +759,7 @@ function ClaimTokensSection({ project, investorDetails, claimFeeBps, transaction
   const feeAmount = (Number(investorDetails.claimableTokens) * claimFeeBps) / 10000;
   const netTokens = Number(investorDetails.claimableTokens) - feeAmount;
   const netFormatted = formatUnits(BigInt(Math.floor(netTokens)), 18);
-  const feeInPOL = formatEther(transactionFee);
+  const feeDisplay = formatEther(transactionFee);
 
   return (
     <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6 mb-6">
@@ -780,7 +790,7 @@ function ClaimTokensSection({ project, investorDetails, claimFeeBps, transaction
       </div>
 
       {transactionFee > 0n && (
-        <p className="text-slate-400 text-sm mb-4">Transaction fee: {feeInPOL} POL</p>
+        <p className="text-slate-400 text-sm mb-4">Transaction fee: {feeDisplay} {nativeCurrency}</p>
       )}
 
       <button
@@ -788,7 +798,7 @@ function ClaimTokensSection({ project, investorDetails, claimFeeBps, transaction
         disabled={claimPending}
         className="w-full py-3 bg-green-600 hover:bg-green-500 disabled:bg-slate-600 rounded-lg text-white font-semibold transition"
       >
-        {claimPending ? 'Claiming...' : `Claim Tokens${transactionFee > 0n ? ` (+ ${feeInPOL} POL)` : ''}`}
+        {claimPending ? 'Claiming...' : `Claim Tokens${transactionFee > 0n ? ` (+ ${feeDisplay} ${nativeCurrency})` : ''}`}
       </button>
     </div>
   );
@@ -803,8 +813,44 @@ function ProjectPageContent() {
   const searchParams = useSearchParams();
   const projectId = params?.id as string;
 
+  // Wagmi hooks
   const { address, isConnected } = useAccount();
+  const walletChainId = useChainId();
+  const publicClient = usePublicClient();
   const { kycData, tierInfo } = useKYC();
+
+  // Chain config for multichain support
+  const {
+    chainId,
+    chainName,
+    contracts,
+    explorerUrl,
+    nativeCurrency,
+    isDeployed,
+    isTestnet,
+    switchToChain,
+    isSwitching,
+    getDeployedChains
+  } = useChainConfig();
+
+  // Check for wrong chain
+  const isWrongChain = useMemo(() => 
+    isConnected && walletChainId !== chainId,
+    [isConnected, walletChainId, chainId]
+  );
+
+  // Get tokens for this chain
+  const tokens = useMemo<Record<string, TokenConfig>>(() => {
+    if (!contracts) return {};
+    const result: Record<string, TokenConfig> = {};
+    if (contracts.USDC) {
+      result.USDC = { address: contracts.USDC as Address, symbol: 'USDC', decimals: 6 };
+    }
+    if (contracts.USDT) {
+      result.USDT = { address: contracts.USDT as Address, symbol: 'USDT', decimals: 6 };
+    }
+    return result;
+  }, [contracts]);
 
   const [project, setProject] = useState<Project | null>(null);
   const [deployment, setDeployment] = useState<DeploymentRecord | null>(null);
@@ -832,13 +878,13 @@ function ProjectPageContent() {
     }
   }, [searchParams, projectId]);
 
-  const loadDeployment = async () => {
-    if (!projectId || !CONTRACTS.RWALaunchpadFactory) return;
+  const loadDeployment = useCallback(async () => {
+    if (!projectId || !contracts?.RWALaunchpadFactory || !publicClient) return;
     
     setDeploymentLoading(true);
     try {
       const deploymentData = await publicClient.readContract({
-        address: CONTRACTS.RWALaunchpadFactory as Address,
+        address: contracts.RWALaunchpadFactory as Address,
         abi: RWALaunchpadFactoryABI,
         functionName: 'getDeployment',
         args: [BigInt(projectId)],
@@ -850,17 +896,17 @@ function ProjectPageContent() {
     } finally {
       setDeploymentLoading(false);
     }
-  };
+  }, [projectId, contracts?.RWALaunchpadFactory, publicClient]);
 
-  const loadData = async () => {
-    if (!projectId || !CONTRACTS.RWAProjectNFT) return;
+  const loadData = useCallback(async () => {
+    if (!projectId || !contracts?.RWAProjectNFT || !publicClient) return;
 
     try {
       setLoading(true);
       setError(null);
 
       const projectData = (await publicClient.readContract({
-        address: CONTRACTS.RWAProjectNFT as Address,
+        address: contracts.RWAProjectNFT as Address,
         abi: RWAProjectNFTABI,
         functionName: 'getProject',
         args: [BigInt(projectId)],
@@ -993,18 +1039,29 @@ function ProjectPageContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, address, contracts, publicClient]);
 
   useEffect(() => {
-    loadData();
-    loadDeployment();
-  }, [projectId, address]);
+    if (isDeployed) {
+      loadData();
+      loadDeployment();
+    }
+  }, [projectId, address, isDeployed, loadData, loadDeployment]);
 
   useEffect(() => {
     if (paymentSuccess) {
       loadData();
     }
-  }, [paymentSuccess]);
+  }, [paymentSuccess, loadData]);
+
+  // Handle network switch
+  const handleSwitchNetwork = async (targetChainId: number) => {
+    try {
+      await switchToChain(targetChainId);
+    } catch (err) {
+      console.error('Failed to switch network:', err);
+    }
+  };
 
   const projectName = metadata?.name || tokenInfo?.name || `Project #${projectId}`;
   const description = metadata?.description || 'No description available.';
@@ -1037,6 +1094,78 @@ function ProjectPageContent() {
   const showKYCWarning = !kycLoading && !isKYCVerified && isConnected && project?.status === 2 && !isExpired && remainingCapacity > 0;
 
   const tokenPrice = 100;
+
+  // Network not supported
+  if (!isDeployed) {
+    const deployedChains = getDeployedChains();
+    
+    return (
+      <div className="min-h-screen bg-slate-900">
+        <Header />
+        <div className="max-w-4xl mx-auto px-4 py-20 text-center">
+          <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700">
+            <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <span className="text-3xl">🌐</span>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Network Not Supported</h2>
+            <p className="text-slate-400 mb-6">
+              Projects are not available on {chainName}. Please switch to a supported network.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              {deployedChains.slice(0, 4).map((chain) => (
+                <button
+                  key={chain.chainId}
+                  onClick={() => handleSwitchNetwork(chain.chainId)}
+                  disabled={isSwitching}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+                >
+                  {isSwitching && (
+                    <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  )}
+                  {chain.name}
+                  {chain.isTestnet && (
+                    <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
+                      Testnet
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Wrong chain warning
+  if (isWrongChain) {
+    return (
+      <div className="min-h-screen bg-slate-900">
+        <Header />
+        <div className="max-w-4xl mx-auto px-4 py-20 text-center">
+          <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700">
+            <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <span className="text-3xl">⚠️</span>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Wrong Network</h2>
+            <p className="text-slate-400 mb-6">
+              Please switch to {chainName} to view this project.
+            </p>
+            <button
+              onClick={() => handleSwitchNetwork(chainId)}
+              disabled={isSwitching}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 rounded-lg text-white font-medium transition-colors flex items-center gap-2 mx-auto"
+            >
+              {isSwitching && (
+                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+              )}
+              Switch to {chainName}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -1083,6 +1212,29 @@ function ProjectPageContent() {
         </div>
       )}
 
+      {/* Network Banner */}
+      <div className={`border-b ${isTestnet ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
+        <div className="max-w-6xl mx-auto px-6 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${isTestnet ? 'bg-yellow-400' : 'bg-green-400'}`} />
+            <span className={`text-sm font-medium ${isTestnet ? 'text-yellow-400' : 'text-green-400'}`}>
+              {chainName} {isTestnet && '(Testnet)'}
+            </span>
+          </div>
+          <a
+            href={`${explorerUrl}/address/${contracts?.RWAProjectNFT}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-400 hover:text-white text-sm transition flex items-center gap-1"
+          >
+            View Contract
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
       {/* Hero Section */}
       <div className="relative">
         {imageUrl ? (
@@ -1107,6 +1259,9 @@ function ProjectPageContent() {
               {metadata?.properties?.category && (
                 <span className="px-3 py-1 bg-slate-700/80 rounded-full text-sm text-slate-300">{metadata.properties.category}</span>
               )}
+              <span className={`px-3 py-1 rounded-full text-sm ${isTestnet ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                {chainName}
+              </span>
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-white">{projectName}</h1>
           </div>
@@ -1161,7 +1316,7 @@ function ProjectPageContent() {
                 {transactionFee > 0n && (
                   <div className="bg-slate-700/50 rounded-lg p-4">
                     <p className="text-slate-400 text-sm">Transaction Fee</p>
-                    <p className="text-purple-400 text-lg font-semibold">{formatEther(transactionFee)} POL</p>
+                    <p className="text-purple-400 text-lg font-semibold">{formatEther(transactionFee)} {nativeCurrency}</p>
                   </div>
                 )}
               </div>
@@ -1208,7 +1363,10 @@ function ProjectPageContent() {
             <ContractInfoBubble 
               deployment={deployment} 
               project={project} 
-              loading={deploymentLoading} 
+              loading={deploymentLoading}
+              explorerUrl={explorerUrl}
+              chainName={chainName}
+              contracts={contracts}
             />
 
             {investorDetails && (
@@ -1217,6 +1375,7 @@ function ProjectPageContent() {
                 investorDetails={investorDetails}
                 onRefundSuccess={loadData}
                 transactionFee={transactionFee}
+                nativeCurrency={nativeCurrency}
               />
             )}
 
@@ -1235,6 +1394,7 @@ function ProjectPageContent() {
                 claimFeeBps={claimFeeBps}
                 transactionFee={transactionFee}
                 onClaimSuccess={loadData}
+                nativeCurrency={nativeCurrency}
               />
             )}
           </div>
@@ -1342,7 +1502,7 @@ function ProjectPageContent() {
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-purple-400">⛽</span>
                     <span className="text-slate-300">
-                      Transaction fee: <span className="text-purple-400 font-medium">{formatEther(transactionFee)} POL</span>
+                      Transaction fee: <span className="text-purple-400 font-medium">{formatEther(transactionFee)} {nativeCurrency}</span>
                     </span>
                   </div>
                 </div>
@@ -1360,7 +1520,9 @@ function ProjectPageContent() {
                       >
                         <span className="text-2xl">💎</span>
                         <span className="text-white font-medium">Crypto</span>
-                        <span className="text-slate-400 text-xs">USDC / USDT</span>
+                        <span className="text-slate-400 text-xs">
+                          {Object.keys(tokens).join(' / ') || 'Stablecoins'}
+                        </span>
                       </button>
                       <button
                         onClick={() => setPaymentMethod('card')}
@@ -1410,8 +1572,10 @@ function ProjectPageContent() {
                           const checkTotal = async () => {
                             attempts++;
                             try {
+                              if (!publicClient || !contracts?.RWAProjectNFT) return;
+                              
                               const projectData = await publicClient.readContract({
-                                address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+                                address: contracts.RWAProjectNFT as Address,
                                 abi: RWAProjectNFTABI,
                                 functionName: 'getProject',
                                 args: [BigInt(projectId)],
@@ -1470,13 +1634,19 @@ function ProjectPageContent() {
                   <span className="text-white">#{projectId}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-slate-400">Network</span>
+                  <span className={`${isTestnet ? 'text-yellow-400' : 'text-green-400'}`}>
+                    {chainName}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-slate-400">Created</span>
                   <span className="text-white">{new Date(Number(project.createdAt) * 1000).toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Owner</span>
                   <a
-                    href={`${EXPLORER_URL}/address/${project.owner}`}
+                    href={`${explorerUrl}/address/${project.owner}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-400 hover:text-blue-300"
@@ -1503,7 +1673,7 @@ function ProjectPageContent() {
         </div>
       </div>
 
-      {showInvestModal && (
+      {showInvestModal && publicClient && (
         <InvestModal
           project={project}
           projectName={projectName}
@@ -1511,6 +1681,9 @@ function ProjectPageContent() {
           kycRemainingLimit={kycRemainingLimit}
           kycTier={kycData.tier}
           transactionFee={transactionFee}
+          tokens={tokens}
+          nativeCurrency={nativeCurrency}
+          publicClient={publicClient}
           onClose={() => setShowInvestModal(false)}
           onSuccess={() => {
             setShowInvestModal(false);

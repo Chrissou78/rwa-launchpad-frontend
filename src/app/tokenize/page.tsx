@@ -72,6 +72,8 @@ interface UploadedDocument {
   type: string;
   size: number;
   url: string;
+  ipfsHash?: string;
+  ipfsUrl?: string;
   documentType: string;
   uploadedAt: Date;
 }
@@ -85,11 +87,8 @@ interface DocumentType {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   pending: { label: 'Pending Review', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', icon: <Clock className="w-4 h-4" /> },
-  under_review: { label: 'Under Review', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', icon: <Eye className="w-4 h-4" /> },
-  approved: { label: 'Approved', color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: <CheckCircle2 className="w-4 h-4" /> },
+  approved: { label: 'Awaiting Payment', color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: <CheckCircle2 className="w-4 h-4" /> },
   rejected: { label: 'Rejected', color: 'bg-red-500/20 text-red-400 border-red-500/30', icon: <AlertCircle className="w-4 h-4" /> },
-  payment_pending: { label: 'Awaiting Payment', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', icon: <CreditCard className="w-4 h-4" /> },
-  payment_confirmed: { label: 'Payment Confirmed', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', icon: <CheckCircle2 className="w-4 h-4" /> },
   creation_ready: { label: 'Ready to Create', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: <Coins className="w-4 h-4" /> },
   completed: { label: 'Completed', color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: <CheckCircle2 className="w-4 h-4" /> },
   cancelled: { label: 'Cancelled', color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', icon: <AlertCircle className="w-4 h-4" /> },
@@ -188,7 +187,7 @@ const ALLOWED_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
-export default function TokenisePage() {
+export default function TokenizePage() {
   const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
   const { kycData } = useKYC();
@@ -453,7 +452,7 @@ export default function TokenisePage() {
       uploadFormData.append('file', file);
       uploadFormData.append('type', 'document');
 
-      const response = await fetch('/api/upload', {
+      const response = await fetch('/api/ipfs/upload-file', {
         method: 'POST',
         body: uploadFormData,
       });
@@ -469,7 +468,9 @@ export default function TokenisePage() {
         name: file.name,
         type: file.type,
         size: file.size,
-        url: data.url,
+        url: data.gatewayUrl,
+        ipfsHash: data.ipfsHash,
+        ipfsUrl: data.ipfsUri,
         documentType: selectedDocType,
         uploadedAt: new Date(),
       };
@@ -652,7 +653,7 @@ export default function TokenisePage() {
             Custom Asset Tokenization
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Tokenise Your Assets
+            Tokenize Your Assets
           </h1>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
             Transform your real-world assets into blockchain-based security tokens. 

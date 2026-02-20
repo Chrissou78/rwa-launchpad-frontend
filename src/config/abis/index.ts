@@ -496,6 +496,32 @@ export const ACCESS_CONTROL_ROLES = {
 } as const;
 
 // ============================================================================
+// RWA TOKENIZATION FACTORY ABI
+// ============================================================================
+export const RWATokenizationFactoryABI = [
+  // deployNFTAndToken - main function for NFT + Token bundle
+  { inputs: [{ name: '_name', type: 'string' }, { name: '_symbol', type: 'string' }, { name: '_supply', type: 'uint256' }, { name: '_tokenURI', type: 'string' }], name: 'deployNFTAndToken', outputs: [{ name: 'deploymentId', type: 'uint256' }, { name: 'securityToken', type: 'address' }, { name: 'assetNFT', type: 'address' }, { name: 'tokenId', type: 'uint256' }], stateMutability: 'payable', type: 'function' },
+  // deployWithEscrow - NFT + Token + Escrow
+  { inputs: [{ name: '_name', type: 'string' }, { name: '_symbol', type: 'string' }, { name: '_supply', type: 'uint256' }, { name: '_tokenURI', type: 'string' }], name: 'deployWithEscrow', outputs: [{ name: 'deploymentId', type: 'uint256' }, { name: 'securityToken', type: 'address' }, { name: 'assetNFT', type: 'address' }, { name: 'tokenId', type: 'uint256' }, { name: 'tradeEscrow', type: 'address' }], stateMutability: 'payable', type: 'function' },
+  // deployToken - ERC3643 only
+  { inputs: [{ name: '_name', type: 'string' }, { name: '_symbol', type: 'string' }, { name: '_supply', type: 'uint256' }, { name: '_metadataURI', type: 'string' }], name: 'deployToken', outputs: [{ name: 'deploymentId', type: 'uint256' }, { name: 'securityToken', type: 'address' }], stateMutability: 'payable', type: 'function' },
+  // deployNFT - ERC721 only
+  { inputs: [{ name: '_name', type: 'string' }, { name: '_symbol', type: 'string' }, { name: '_tokenURI', type: 'string' }], name: 'deployNFT', outputs: [{ name: 'deploymentId', type: 'uint256' }, { name: 'assetNFT', type: 'address' }, { name: 'tokenId', type: 'uint256' }], stateMutability: 'payable', type: 'function' },
+  // addDividendModule - add to existing deployment
+  { inputs: [{ name: '_deploymentId', type: 'uint256' }], name: 'addDividendModule', outputs: [{ name: 'dividendDistributor', type: 'address' }], stateMutability: 'payable', type: 'function' },
+  // View functions
+  { inputs: [], name: 'getFees', outputs: [{ name: '_tokenFee', type: 'uint256' }, { name: '_nftFee', type: 'uint256' }, { name: '_bundleFee', type: 'uint256' }, { name: '_escrowFee', type: 'uint256' }, { name: '_dividendFee', type: 'uint256' }, { name: '_escrowTxFeeBps', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '_deployer', type: 'address' }], name: 'isDeployerApproved', outputs: [{ type: 'bool' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'getImplementations', outputs: [{ name: '', type: 'tuple', components: [{ name: 'securityToken', type: 'address' }, { name: 'assetNFT', type: 'address' }, { name: 'compliance', type: 'address' }, { name: 'tradeEscrow', type: 'address' }, { name: 'dividendDistributor', type: 'address' }] }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '_deploymentId', type: 'uint256' }], name: 'getDeployment', outputs: [{ name: '', type: 'tuple', components: [{ name: 'deploymentId', type: 'uint256' }, { name: 'owner', type: 'address' }, { name: 'securityToken', type: 'address' }, { name: 'assetNFT', type: 'address' }, { name: 'nftTokenId', type: 'uint256' }, { name: 'tradeEscrow', type: 'address' }, { name: 'dividendDistributor', type: 'address' }, { name: 'deploymentType', type: 'uint8' }, { name: 'deployedAt', type: 'uint256' }, { name: 'active', type: 'bool' }, { name: 'metadataURI', type: 'string' }] }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: '_owner', type: 'address' }], name: 'getOwnerDeployments', outputs: [{ type: 'uint256[]' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'stablecoin', outputs: [{ type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'bundleFee', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'escrowFee', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'dividendFee', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+] as const;
+
+// ============================================================================
 // TYPE EXPORTS
 // ============================================================================
 export type KYCManagerABIType = typeof KYCManagerABI;
@@ -510,3 +536,4 @@ export type ModularComplianceABIType = typeof ModularComplianceABI;
 export type ERC20ABIType = typeof ERC20ABI;
 export type IAccessControlABIType = typeof IAccessControlABI;
 export type OffChainInvestmentManagerABIType = typeof OffChainInvestmentManagerABI;
+export type RWATokenizationFactoryABIType = typeof RWATokenizationFactoryABI;

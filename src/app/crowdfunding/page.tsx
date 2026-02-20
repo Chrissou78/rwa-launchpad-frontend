@@ -1,8 +1,10 @@
+// src/app/crowdfunding/page.tsx
 'use client';
 
+import { useMemo, useCallback } from 'react';
 import Header from '@/components/Header';
-import { useAccount } from 'wagmi';
-import { FAUCET_URL } from '@/config/contracts';
+import { useAccount, useChainId } from 'wagmi';
+import { useChainConfig } from '@/hooks/useChainConfig';
 import { useConnectModal } from '../../components/ConnectButton';
 import Link from 'next/link';
 import {
@@ -14,15 +16,49 @@ import {
   FileCheck,
   ArrowRight,
   CheckCircle2,
-  Clock,
-  DollarSign,
   Coins,
-  Target
+  Target,
+  Globe,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function CrowdfundingPage() {
   const { isConnected } = useAccount();
+  const walletChainId = useChainId();
   const { openConnectModal } = useConnectModal();
+
+  // Multichain config
+  const {
+    chainId,
+    chainName,
+    contracts,
+    explorerUrl,
+    nativeCurrency,
+    faucetUrl,
+    isDeployed,
+    isTestnet,
+    switchToChain,
+    isSwitching,
+    getDeployedChains,
+  } = useChainConfig();
+
+  // Check if on wrong chain
+  const isWrongChain = useMemo(() => {
+    if (!isConnected) return false;
+    return walletChainId !== chainId;
+  }, [isConnected, walletChainId, chainId]);
+
+  // Network switch handler
+  const handleSwitchNetwork = useCallback(async (targetChainId?: number) => {
+    try {
+      await switchToChain(targetChainId);
+    } catch (error) {
+      console.error('Failed to switch network:', error);
+    }
+  }, [switchToChain]);
+
+  // Get deployed chains
+  const deployedChains = getDeployedChains();
 
   const howItWorks = [
     {
@@ -108,11 +144,69 @@ export default function CrowdfundingPage() {
     "Secondary market liquidity"
   ];
 
+  // Network badge component
+  const NetworkBadge = () => (
+    <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-800 rounded-full border border-gray-700">
+      <div className={`w-2 h-2 rounded-full ${isTestnet ? 'bg-yellow-500' : 'bg-green-500'}`} />
+      <span className="text-sm text-gray-300">{chainName}</span>
+      {isTestnet && (
+        <span className="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">
+          Testnet
+        </span>
+      )}
+    </div>
+  );
+
+  // Available networks component
+  const AvailableNetworks = () => (
+    <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+      <span className="text-sm text-gray-500">Available on:</span>
+      {deployedChains.map((chain) => (
+        <button
+          key={chain.id}
+          onClick={() => handleSwitchNetwork(chain.id)}
+          disabled={isSwitching || chain.id === chainId}
+          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm transition-colors ${
+            chain.id === chainId
+              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+              : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-600 hover:text-gray-300'
+          }`}
+        >
+          <div className={`w-1.5 h-1.5 rounded-full ${chain.testnet ? 'bg-yellow-500' : 'bg-green-500'}`} />
+          {chain.name}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-900">
       <Header />
 
       <main>
+        {/* Wrong Chain Banner */}
+        {isConnected && isWrongChain && (
+          <div className="bg-yellow-500/10 border-b border-yellow-500/30">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                  <span className="text-yellow-200">
+                    Please switch to {chainName} to access all features
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleSwitchNetwork()}
+                  disabled={isSwitching}
+                  className="px-4 py-1.5 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 text-black font-medium rounded-lg text-sm transition-colors"
+                >
+                  {isSwitching ? 'Switching...' : `Switch to ${chainName}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Hero Section */}
         <div className="relative overflow-hidden">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
@@ -122,6 +216,11 @@ export default function CrowdfundingPage() {
                 <Link href="/" className="hover:text-blue-400">Home</Link>
                 <span className="mx-2">/</span>
                 <span className="text-blue-400">Crowdfunding</span>
+              </div>
+
+              {/* Network Badge */}
+              <div className="flex justify-center mb-6">
+                <NetworkBadge />
               </div>
 
               <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
@@ -164,6 +263,9 @@ export default function CrowdfundingPage() {
                   </Link>
                 </div>
               )}
+
+              {/* Available Networks */}
+              {deployedChains.length > 1 && <AvailableNetworks />}
             </div>
           </div>
         </div>
@@ -284,13 +386,59 @@ export default function CrowdfundingPage() {
               <StatCard value="$0" label="Total Value Locked" />
               <StatCard value="0" label="Projects Launched" />
               <StatCard value="0" label="Verified Investors" />
-              <StatCard value="Amoy" label="Network" />
+              <StatCard 
+                value={chainName} 
+                label="Current Network" 
+                badge={isTestnet ? 'Testnet' : 'Mainnet'}
+                badgeColor={isTestnet ? 'yellow' : 'green'}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Supported Networks Section */}
+        <div className="py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-3xl font-bold text-white text-center mb-4">
+              Supported Networks
+            </h2>
+            <p className="text-gray-400 text-center mb-12 max-w-2xl mx-auto">
+              Our platform is deployed across multiple blockchain networks for maximum accessibility.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
+              {deployedChains.map((chain) => (
+                <button
+                  key={chain.id}
+                  onClick={() => handleSwitchNetwork(chain.id)}
+                  disabled={isSwitching}
+                  className={`p-4 rounded-xl border transition-all ${
+                    chain.id === chainId
+                      ? 'bg-blue-500/20 border-blue-500 text-white'
+                      : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600 hover:bg-gray-750'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Globe className="w-5 h-5" />
+                    <span className="font-semibold">{chain.name}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${chain.testnet ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                    <span className="text-sm text-gray-400">
+                      {chain.testnet ? 'Testnet' : 'Mainnet'}
+                    </span>
+                  </div>
+                  {chain.id === chainId && (
+                    <div className="mt-2 text-xs text-blue-400">Currently Connected</div>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
         {/* KYC Tiers */}
-        <div className="py-16">
+        <div className="py-16 bg-gray-800/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h2 className="text-3xl font-bold text-white text-center mb-4">
               KYC Verification Tiers
@@ -341,22 +489,66 @@ export default function CrowdfundingPage() {
           </div>
         </div>
 
-        {/* Testnet Notice */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4">
-            <div className="flex items-center">
-              <span className="text-yellow-500 font-semibold mr-2">⚠️ Testnet:</span>
-              <span className="text-yellow-200">
-                This application is running on Avalanche Fuji testnet. Get test MATIC from the{' '}
-                <a
-                  href={FAUCET_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-yellow-100"
-                >
-                  Avalanche Faucet
-                </a>
-              </span>
+        {/* Testnet Notice - Only show if on testnet */}
+        {isTestnet && faucetUrl && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4">
+              <div className="flex items-center flex-wrap gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                <span className="text-yellow-500 font-semibold">Testnet Mode:</span>
+                <span className="text-yellow-200">
+                  You're currently on {chainName}. Get test {nativeCurrency?.symbol || 'tokens'} from the{' '}
+                  <a
+                    href={faucetUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-yellow-100"
+                  >
+                    {chainName} Faucet
+                  </a>
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Network Info Footer */}
+        <div className="bg-gray-900 border-t border-gray-800 py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${isTestnet ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                  <span className="text-gray-400">Connected to {chainName}</span>
+                </div>
+                {nativeCurrency && (
+                  <span className="text-gray-500 text-sm">
+                    Gas: {nativeCurrency.symbol}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-4">
+                {explorerUrl && (
+                  <a
+                    href={explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-gray-400 hover:text-gray-300"
+                  >
+                    Block Explorer →
+                  </a>
+                )}
+                {faucetUrl && isTestnet && (
+                  <a
+                    href={faucetUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-gray-400 hover:text-gray-300"
+                  >
+                    Get Test Tokens →
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -365,11 +557,32 @@ export default function CrowdfundingPage() {
   );
 }
 
-function StatCard({ value, label }: { value: string; label: string }) {
+function StatCard({ 
+  value, 
+  label, 
+  badge, 
+  badgeColor = 'gray' 
+}: { 
+  value: string; 
+  label: string;
+  badge?: string;
+  badgeColor?: 'yellow' | 'green' | 'gray';
+}) {
+  const badgeColors = {
+    yellow: 'bg-yellow-500/20 text-yellow-400',
+    green: 'bg-green-500/20 text-green-400',
+    gray: 'bg-gray-700 text-gray-400',
+  };
+
   return (
     <div>
       <div className="text-3xl font-bold text-white">{value}</div>
       <div className="text-gray-400">{label}</div>
+      {badge && (
+        <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded ${badgeColors[badgeColor]}`}>
+          {badge}
+        </span>
+      )}
     </div>
   );
 }

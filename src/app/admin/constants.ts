@@ -75,11 +75,8 @@ export const COUNTRY_CODES: Record<number, string> = {
 // Tokenization status config
 export const TOKENIZATION_STATUS: Record<string, { label: string; color: string }> = {
   pending: { label: 'Pending Review', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
-  under_review: { label: 'Under Review', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  approved: { label: 'Approved', color: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  approved: { label: 'Awaiting Payment', color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   rejected: { label: 'Rejected', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
-  payment_pending: { label: 'Awaiting Payment', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
-  payment_confirmed: { label: 'Payment Confirmed', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
   creation_ready: { label: 'Ready to Create', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   completed: { label: 'Completed', color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   cancelled: { label: 'Cancelled', color: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
@@ -203,7 +200,7 @@ export interface TokenizationStats {
 
 export interface TokenizationApplication {
   id: string;
-  wallet_address: string;
+  user_address: string;
   company_name: string;
   contact_name: string;
   email: string;

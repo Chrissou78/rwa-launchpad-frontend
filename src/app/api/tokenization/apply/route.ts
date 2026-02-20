@@ -31,27 +31,20 @@ export async function POST(request: NextRequest) {
     // Parse estimated value
     const estimatedValue = parseFloat(body.estimatedValue?.replace(/[^0-9.]/g, '') || '0');
 
-    // Validate token type
-    const validTokenTypes = ['token_only', 'nft_only', 'nft_and_token', 'nft_token_escrow'];
-    if (!body.tokenType || !validTokenTypes.includes(body.tokenType)) {
-      return NextResponse.json({ error: 'Invalid token type' }, { status: 400 });
-    }
-
-    // Calculate fee based on token type
-    const feeMap: Record<string, number> = {
-        'token_only': 500,
-        'nft_only': 500,
-        'nft_and_token': 750,
-        'nft_token_escrow': 1000,
-    };
-    const feeAmount = feeMap[body.tokenType] || 500;
+    // Calculate fee based on options
+    // Base: $750 (Project NFT + ERC-3643 Token)
+    // Escrow: +$250
+    // Dividends: +$200
+    let feeAmount = 750;
+    if (body.needsEscrow) feeAmount += 250;
+    if (body.needsDividends) feeAmount += 200;
 
     // Create application
     const { data: application, error: appError } = await supabase
       .from('tokenization_applications')
       .insert({
         user_address: walletAddress.toLowerCase(),
-        asset_name: body.companyName || 'Unnamed Asset',
+        asset_name: body.assetName || 'Unnamed Asset',
         asset_type: assetTypeMap[body.assetType] || 'other',
         asset_description: body.assetDescription || '',
         asset_location: null,
@@ -62,8 +55,8 @@ export async function POST(request: NextRequest) {
         desired_token_supply: body.totalSupply ? parseInt(body.totalSupply.replace(/[^0-9]/g, '')) : null,
         token_price_estimate: null,
         fundraising_goal: null,
-        token_type: body.tokenType,
-        needs_escrow: body.tokenType === 'nft_token_escrow',
+        needs_escrow: body.needsEscrow || false,
+        needs_dividends: body.needsDividends || false,
         ownership_proof_type: null,
         legal_entity_name: body.companyName || null,
         legal_entity_type: null,
@@ -75,7 +68,9 @@ export async function POST(request: NextRequest) {
         fee_amount: feeAmount,
         fee_currency: 'USDC',
         status: 'pending',
+        token_type: 'nft_and_token',
         documents: JSON.stringify({
+          files: body.documents || [],
           website: body.website,
           useCase: body.useCase,
           tokenName: body.tokenName,
@@ -99,7 +94,8 @@ export async function POST(request: NextRequest) {
         status: application.status,
         fee_amount: application.fee_amount,
         fee_currency: application.fee_currency,
-        token_type: application.token_type,
+        needs_escrow: application.needs_escrow,
+        needs_dividends: application.needs_dividends,
       },
     });
   } catch (error) {

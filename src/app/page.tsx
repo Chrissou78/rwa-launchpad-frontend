@@ -5,7 +5,7 @@ import React from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { useAccount } from 'wagmi';
-import {FAUCET_URL} from '@/config/contracts';
+import { useChainConfig } from '@/hooks/useChainConfig';
 import { useConnectModal } from '../components/ConnectButton';
 import { 
   Building2, 
@@ -27,11 +27,35 @@ import {
   CheckCircle2,
   ArrowRight,
   Wallet,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function LandingPage() {
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
+  
+  // Multichain config
+  const {
+    chainName,
+    isTestnet,
+    isDeployed,
+    nativeCurrency,
+    explorerUrl,
+  } = useChainConfig();
+
+  // Get faucet URL based on chain
+  const getFaucetUrl = (): string | null => {
+    const faucets: Record<string, string> = {
+      'Avalanche Fuji': 'https://faucet.avax.network/',
+      'Polygon Amoy': 'https://faucet.polygon.technology/',
+      'Sepolia': 'https://sepoliafaucet.com/',
+      'Base Sepolia': 'https://www.coinbase.com/faucets/base-ethereum-goerli-faucet',
+      'Arbitrum Sepolia': 'https://faucet.quicknode.com/arbitrum/sepolia',
+    };
+    return chainName ? faucets[chainName] || null : null;
+  };
+
+  const faucetUrl = getFaucetUrl();
 
   const marketStats = [
     { value: "$33B+", label: "Tokenized RWA Market" },
@@ -149,6 +173,7 @@ export default function LandingPage() {
           <div className="absolute top-40 right-10 w-72 h-72 bg-purple-500 rounded-full filter blur-[128px]"></div>
         </div>
       </section>
+
       {/* What is RWA Tokenization - Simplified */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
@@ -168,7 +193,8 @@ export default function LandingPage() {
           </Link>
         </div>
       </section>
-      {/* Why Tokenize Section - MOVED UP */}
+
+      {/* Why Tokenize Section */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-800/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
@@ -203,7 +229,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-      {/* Want to Tokenize Your Assets - NEW SECTION */}
+
+      {/* Want to Tokenize Your Assets Section */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-900/30 to-purple-900/30">
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded-full text-purple-400 text-sm mb-6">
@@ -570,24 +597,55 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Testnet Notice */}
+      {/* Network Notice - Dynamic based on chain */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-red-900/50 border border-red-600 rounded-lg p-4">
-          <div className="flex items-center">
-            <span className="text-red-400 font-semibold mr-2">🔺 Testnet:</span>
-            <span className="text-red-200">
-              This application is running on Avalanche Fuji testnet. Get test AVAX from the{' '}
-              <a
-                href={FAUCET_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-red-100"
-              >
-                Avalanche Faucet
-              </a>
-            </span>
+        {/* Testnet Notice */}
+        {isTestnet && faucetUrl && (
+          <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4 mb-4">
+            <div className="flex items-center">
+              <AlertTriangle className="w-5 h-5 text-yellow-400 mr-2 flex-shrink-0" />
+              <span className="text-yellow-400 font-semibold mr-2">Testnet Mode:</span>
+              <span className="text-yellow-200">
+                You're connected to {chainName}. Get test {nativeCurrency} from the{' '}
+                <a
+                  href={faucetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-yellow-100"
+                >
+                  {chainName?.includes('Avalanche') ? 'Avalanche' : chainName?.includes('Polygon') ? 'Polygon' : 'Network'} Faucet
+                </a>
+              </span>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Not Deployed Notice */}
+        {!isDeployed && chainName && (
+          <div className="bg-orange-900/50 border border-orange-600 rounded-lg p-4 mb-4">
+            <div className="flex items-center">
+              <AlertTriangle className="w-5 h-5 text-orange-400 mr-2 flex-shrink-0" />
+              <span className="text-orange-400 font-semibold mr-2">Coming Soon:</span>
+              <span className="text-orange-200">
+                Platform contracts are not yet deployed on {chainName}. 
+                Please switch to a supported network to access all features.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Mainnet Notice */}
+        {!isTestnet && isDeployed && (
+          <div className="bg-green-900/50 border border-green-600 rounded-lg p-4">
+            <div className="flex items-center">
+              <CheckCircle2 className="w-5 h-5 text-green-400 mr-2 flex-shrink-0" />
+              <span className="text-green-400 font-semibold mr-2">Live on {chainName}:</span>
+              <span className="text-green-200">
+                You're connected to the production network. Real transactions will use real {nativeCurrency}.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

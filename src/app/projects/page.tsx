@@ -1,19 +1,19 @@
 // src/app/projects/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { createPublicClient, http } from 'viem';
-import { avalancheFuji } from 'viem/chains';
+import { usePublicClient, useChainId, useAccount } from 'wagmi';
+import { Address } from 'viem';
 import Header from '@/components/Header';
-import { ZERO_ADDRESS, RPC_URL, CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS } from '@/config/contracts';
+import { useChainConfig } from '@/hooks/useChainConfig';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
-const publicClient = createPublicClient({
-  chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
-});
+// ============================================================================
+// TYPES
+// ============================================================================
 
 interface ProjectMetadata {
   name?: string;
@@ -49,6 +49,10 @@ interface Project {
 // Contract enum from IRWAProjectNFT.sol:
 // 0=Draft, 1=Pending, 2=Active, 3=Funded, 4=InProgress, 5=Completed, 6=Cancelled, 7=Failed
 const STATUS_LABELS = ['Draft', 'Pending', 'Active', 'Funded', 'In Progress', 'Completed', 'Cancelled', 'Failed'];
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 
 // Check if project is archived (cancelled/failed AND fully refunded)
 const isProjectArchived = (project: Project): boolean => {
@@ -87,7 +91,17 @@ const isValidIPFSHash = (uri: string): boolean => {
   return uri.startsWith('http');
 };
 
-function ProjectCard({ project }: { project: Project }) {
+// ============================================================================
+// PROJECT CARD COMPONENT
+// ============================================================================
+
+interface ProjectCardProps {
+  project: Project;
+  chainName: string;
+  isTestnet: boolean;
+}
+
+function ProjectCard({ project, chainName, isTestnet }: ProjectCardProps) {
   const isCancelled = project.status === 6;
   const isFailed = project.status === 7;
   const isArchived = isProjectArchived(project);
@@ -158,6 +172,17 @@ function ProjectCard({ project }: { project: Project }) {
                 {statusLabel}
               </span>
             )}
+          </div>
+
+          {/* Network Badge */}
+          <div className="absolute top-3 left-3">
+            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+              isTestnet 
+                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' 
+                : 'bg-green-500/20 text-green-400 border border-green-500/30'
+            }`}>
+              {chainName}
+            </span>
           </div>
         </div>
 
@@ -258,112 +283,166 @@ function ProjectCard({ project }: { project: Project }) {
   );
 }
 
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
+
 export default function ProjectsPage() {
+  // Wagmi hooks
+  const publicClient = usePublicClient();
+  const walletChainId = useChainId();
+  const { isConnected } = useAccount();
+
+  // Chain config for multichain support
+  const {
+    chainId,
+    chainName,
+    contracts,
+    explorerUrl,
+    isDeployed,
+    isTestnet,
+    switchToChain,
+    isSwitching,
+    getDeployedChains
+  } = useChainConfig();
+
+  // Check for wrong chain
+  const isWrongChain = useMemo(() => 
+    isConnected && walletChainId !== chainId,
+    [isConnected, walletChainId, chainId]
+  );
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'funded' | 'ended' | 'archived'>('all');
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    async function loadProjects() {
-      if (!CONTRACTS.RWAProjectNFT) {
-        setError('RWAProjectNFT contract not configured');
+  const loadProjects = useCallback(async () => {
+    if (!contracts?.RWAProjectNFT || !publicClient) {
+      setError('Project contracts not available on this network');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const total = await publicClient.readContract({
+        address: contracts.RWAProjectNFT as Address,
+        abi: RWAProjectNFTABI,
+        functionName: 'totalProjects',
+      });
+
+      if (total === 0n) {
+        setProjects([]);
         setLoading(false);
         return;
       }
 
-      try {
-        const total = await publicClient.readContract({
-          address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-          abi: RWAProjectNFTABI,
-          functionName: 'totalProjects',
-        });
+      const loadedProjects: Project[] = [];
 
-        if (total === 0n) {
-          setProjects([]);
-          setLoading(false);
-          return;
-        }
+      for (let i = 1n; i <= total; i++) {
+        try {
+          const projectData = await publicClient.readContract({
+            address: contracts.RWAProjectNFT as Address,
+            abi: RWAProjectNFTABI,
+            functionName: 'getProject',
+            args: [i],
+          });
 
-        const loadedProjects: Project[] = [];
+          const project: Project = {
+            id: projectData.id,
+            owner: projectData.owner,
+            metadataURI: projectData.metadataURI,
+            fundingGoal: projectData.fundingGoal,
+            totalRaised: projectData.totalRaised,
+            minInvestment: projectData.minInvestment,
+            maxInvestment: projectData.maxInvestment,
+            deadline: projectData.deadline,
+            status: projectData.status,
+            securityToken: projectData.securityToken,
+            escrowVault: projectData.escrowVault,
+            createdAt: projectData.createdAt,
+            completedAt: projectData.completedAt,
+            transferable: projectData.transferable,
+          };
 
-        for (let i = 1n; i <= total; i++) {
-          try {
-            const projectData = await publicClient.readContract({
-              address: CONTRACTS.RWAProjectNFT as `0x${string}`,
-              abi: RWAProjectNFTABI,
-              functionName: 'getProject',
-              args: [i],
-            });
+          // Skip metadata and token loading for archived or cancelled/failed projects
+          const isCancelledOrFailed = project.status === 6 || project.status === 7;
 
-            const project: Project = {
-              id: projectData.id,
-              owner: projectData.owner,
-              metadataURI: projectData.metadataURI,
-              fundingGoal: projectData.fundingGoal,
-              totalRaised: projectData.totalRaised,
-              minInvestment: projectData.minInvestment,
-              maxInvestment: projectData.maxInvestment,
-              deadline: projectData.deadline,
-              status: projectData.status,
-              securityToken: projectData.securityToken,
-              escrowVault: projectData.escrowVault,
-              createdAt: projectData.createdAt,
-              completedAt: projectData.completedAt,
-              transferable: projectData.transferable,
-            };
-
-            // Skip metadata and token loading for archived or cancelled/failed projects
-            const isCancelledOrFailed = project.status === 6 || project.status === 7;
-
-            if (!isCancelledOrFailed) {
-              // Load metadata only if valid IPFS hash
-              if (project.metadataURI && isValidIPFSHash(project.metadataURI)) {
-                try {
-                  let url = project.metadataURI;
-                  if (url.startsWith('ipfs://')) {
-                    url = `https://gateway.pinata.cloud/ipfs/${url.replace('ipfs://', '')}`;
-                  }
-                  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-                  if (res.ok) project.metadata = await res.json();
-                } catch {
-                  // Silently fail
+          if (!isCancelledOrFailed) {
+            // Load metadata only if valid IPFS hash
+            if (project.metadataURI && isValidIPFSHash(project.metadataURI)) {
+              try {
+                let url = project.metadataURI;
+                if (url.startsWith('ipfs://')) {
+                  url = `https://gateway.pinata.cloud/ipfs/${url.replace('ipfs://', '')}`;
                 }
-              }
-
-              // Load token info
-              if (project.securityToken && project.securityToken !== ZERO_ADDRESS) {
-                try {
-                  const [name, symbol] = await Promise.all([
-                    publicClient.readContract({ address: project.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'name' }),
-                    publicClient.readContract({ address: project.securityToken as `0x${string}`, abi: RWASecurityTokenABI, functionName: 'symbol' }),
-                  ]);
-                  project.tokenName = name as string;
-                  project.tokenSymbol = symbol as string;
-                } catch {
-                  // Silently fail
-                }
+                const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) project.metadata = await res.json();
+              } catch {
+                // Silently fail
               }
             }
 
-            loadedProjects.push(project);
-          } catch (e) {
-            console.error(`Error loading project ${i}:`, e);
+            // Load token info
+            if (project.securityToken && project.securityToken !== ZERO_ADDRESS) {
+              try {
+                const [name, symbol] = await Promise.all([
+                  publicClient.readContract({ 
+                    address: project.securityToken as Address, 
+                    abi: RWASecurityTokenABI, 
+                    functionName: 'name' 
+                  }),
+                  publicClient.readContract({ 
+                    address: project.securityToken as Address, 
+                    abi: RWASecurityTokenABI, 
+                    functionName: 'symbol' 
+                  }),
+                ]);
+                project.tokenName = name as string;
+                project.tokenSymbol = symbol as string;
+              } catch {
+                // Silently fail
+              }
+            }
           }
+
+          loadedProjects.push(project);
+        } catch (e) {
+          console.error(`Error loading project ${i}:`, e);
         }
-
-        setProjects(loadedProjects);
-      } catch (err) {
-        console.error('Error loading projects:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load projects');
-      } finally {
-        setLoading(false);
       }
-    }
 
-    loadProjects();
-  }, []);
+      setProjects(loadedProjects);
+    } catch (err) {
+      console.error('Error loading projects:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load projects');
+    } finally {
+      setLoading(false);
+    }
+  }, [contracts, publicClient]);
+
+  // Load projects when chain or contracts change
+  useEffect(() => {
+    if (isDeployed) {
+      loadProjects();
+    } else {
+      setProjects([]);
+      setLoading(false);
+    }
+  }, [isDeployed, chainId, loadProjects]);
+
+  // Handle network switch
+  const handleSwitchNetwork = async (targetChainId: number) => {
+    try {
+      await switchToChain(targetChainId);
+    } catch (err) {
+      console.error('Failed to switch network:', err);
+    }
+  };
 
   // Count archived projects
   const archivedCount = projects.filter(isProjectArchived).length;
@@ -397,16 +476,109 @@ export default function ProjectsPage() {
     return true;
   });
 
+  // Network not supported view
+  if (!isDeployed) {
+    const deployedChains = getDeployedChains();
+    
+    return (
+      <div className="min-h-screen bg-gray-900">
+        <Header />
+        <main className="max-w-6xl mx-auto px-4 py-8">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 p-12 text-center">
+            <div className="w-20 h-20 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <span className="text-4xl">🌐</span>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Network Not Supported</h2>
+            <p className="text-gray-400 mb-6">
+              Projects are not available on {chainName}. Please switch to a supported network.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              {deployedChains.map((chain) => (
+                <button
+                  key={chain.chainId}
+                  onClick={() => handleSwitchNetwork(chain.chainId)}
+                  disabled={isSwitching}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+                >
+                  {isSwitching && (
+                    <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  )}
+                  {chain.name}
+                  {chain.isTestnet && (
+                    <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
+                      Testnet
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900">
       <Header />
+
+      {/* Network Banner */}
+      <div className={`border-b ${isTestnet ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
+        <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${isTestnet ? 'bg-yellow-400' : 'bg-green-400'}`} />
+            <span className={`text-sm font-medium ${isTestnet ? 'text-yellow-400' : 'text-green-400'}`}>
+              {chainName} {isTestnet && '(Testnet)'}
+            </span>
+          </div>
+          {contracts?.RWAProjectNFT && (
+            <a
+              href={`${explorerUrl}/address/${contracts.RWAProjectNFT}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-400 hover:text-white text-sm transition flex items-center gap-1"
+            >
+              View Contract
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Wrong Chain Warning */}
+      {isWrongChain && (
+        <div className="bg-orange-500/10 border-b border-orange-500/30">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-orange-400">⚠️</span>
+              <span className="text-orange-400 text-sm">
+                Your wallet is connected to a different network
+              </span>
+            </div>
+            <button
+              onClick={() => handleSwitchNetwork(chainId)}
+              disabled={isSwitching}
+              className="px-4 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 rounded-lg text-white text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              {isSwitching && (
+                <div className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+              )}
+              Switch to {chainName}
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Investment Opportunities</h1>
-            <p className="text-gray-400">Discover tokenized real-world assets</p>
+            <p className="text-gray-400">
+              Discover tokenized real-world assets on {chainName}
+            </p>
           </div>
           <Link
             href="/create"
@@ -470,7 +642,7 @@ export default function ProjectsPage() {
 
         {/* Results Count */}
         <p className="text-gray-400 mb-6">
-          Showing {filteredProjects.length} of {projects.length - archivedCount} projects
+          Showing {filteredProjects.length} of {projects.length - archivedCount} projects on {chainName}
           {archivedCount > 0 && filter !== 'archived' && (
             <span className="text-gray-500"> ({archivedCount} archived)</span>
           )}
@@ -481,7 +653,7 @@ export default function ProjectsPage() {
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="mt-4 text-gray-400">Loading projects...</p>
+              <p className="mt-4 text-gray-400">Loading projects from {chainName}...</p>
             </div>
           </div>
         )}
@@ -493,7 +665,7 @@ export default function ProjectsPage() {
             <h2 className="text-xl font-bold text-white mb-2">Error Loading Projects</h2>
             <p className="text-gray-400 mb-4">{error}</p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => loadProjects()}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
             >
               Retry
@@ -509,14 +681,14 @@ export default function ProjectsPage() {
               {filter === 'archived' 
                 ? 'No Archived Projects' 
                 : projects.length === 0 
-                  ? 'No Projects Yet' 
+                  ? `No Projects on ${chainName}` 
                   : 'No Matching Projects'}
             </h2>
             <p className="text-gray-400 mb-6">
               {filter === 'archived'
                 ? 'Cancelled projects with all funds refunded will appear here.'
                 : projects.length === 0
-                  ? 'Be the first to create a tokenized investment opportunity!'
+                  ? `Be the first to create a tokenized investment opportunity on ${chainName}!`
                   : 'Try adjusting your search or filters.'}
             </p>
             {projects.length === 0 && (
@@ -534,7 +706,12 @@ export default function ProjectsPage() {
         {!loading && !error && filteredProjects.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id.toString()} project={project} />
+              <ProjectCard 
+                key={project.id.toString()} 
+                project={project} 
+                chainName={chainName}
+                isTestnet={isTestnet}
+              />
             ))}
           </div>
         )}

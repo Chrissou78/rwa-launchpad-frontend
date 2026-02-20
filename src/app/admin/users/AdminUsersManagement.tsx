@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { EXPLORER_URL } from '@/config/contracts';
+import { useChainConfig } from '@/hooks/useChainConfig';
 import { useAdmin, AdminUser } from '@/hooks/useAdmin';
 import {
   Shield,
@@ -22,11 +22,53 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Globe,
+  Network
 } from 'lucide-react';
+
+// ============================================
+// NETWORK BADGE COMPONENT
+// ============================================
+
+function NetworkBadge({ 
+  chainName, 
+  isTestnet 
+}: { 
+  chainName: string; 
+  isTestnet: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-700/50 rounded-lg">
+      <div className={`w-2 h-2 rounded-full ${isTestnet ? 'bg-yellow-400' : 'bg-green-400'}`} />
+      <span className="text-sm text-gray-300">{chainName}</span>
+      {isTestnet && (
+        <span className="text-xs px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+          Testnet
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function AdminUsersManagement() {
   const { address } = useAccount();
+  const { 
+    chainId,
+    chainName, 
+    explorerUrl, 
+    isDeployed, 
+    isTestnet,
+    nativeCurrency,
+    switchToChain,
+    isSwitching,
+    getDeployedChains
+  } = useChainConfig();
+  
   const { role, isAdmin, isSuperAdmin, admins, promoteUser, demoteUser, refreshAdmins } = useAdmin();
   
   const [newAdminAddress, setNewAdminAddress] = useState('');
@@ -39,7 +81,10 @@ export default function AdminUsersManagement() {
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [loadingActivityLog, setLoadingActivityLog] = useState(false);
 
-  // Fetch activity log
+  // Get deployed chains for network switching
+  const deployedChains = getDeployedChains();
+
+  // Fetch activity log with chain context
   const fetchActivityLog = async () => {
     if (!address || !isSuperAdmin) return;
 
@@ -47,7 +92,8 @@ export default function AdminUsersManagement() {
     try {
       const response = await fetch('/api/admin/activity?limit=20', {
         headers: {
-          'x-wallet-address': address
+          'x-wallet-address': address,
+          'x-chain-id': chainId?.toString() || '',
         }
       });
 
@@ -66,7 +112,14 @@ export default function AdminUsersManagement() {
     if (isSuperAdmin && showActivityLog) {
       fetchActivityLog();
     }
-  }, [isSuperAdmin, showActivityLog, address]);
+  }, [isSuperAdmin, showActivityLog, address, chainId]);
+
+  // Handle network switch
+  const handleSwitchNetwork = async (targetChainId: number) => {
+    if (switchToChain) {
+      await switchToChain(targetChainId);
+    }
+  };
 
   // Handle promote
   const handlePromote = async (e: React.FormEvent) => {
@@ -89,7 +142,7 @@ export default function AdminUsersManagement() {
     const result = await promoteUser(newAdminAddress, newAdminRole);
 
     if (result.success) {
-      setMessage({ type: 'success', text: `Successfully promoted to ${newAdminRole.replace('_', ' ')}` });
+      setMessage({ type: 'success', text: `Successfully promoted to ${newAdminRole.replace('_', ' ')} on ${chainName}` });
       setNewAdminAddress('');
       if (showActivityLog) fetchActivityLog();
     } else {
@@ -107,7 +160,7 @@ export default function AdminUsersManagement() {
     const result = await demoteUser(targetAddress, 'demote');
 
     if (result.success) {
-      setMessage({ type: 'success', text: 'Successfully demoted to admin' });
+      setMessage({ type: 'success', text: `Successfully demoted to admin on ${chainName}` });
       if (showActivityLog) fetchActivityLog();
     } else {
       setMessage({ type: 'error', text: result.error || 'Failed to demote user' });
@@ -118,7 +171,7 @@ export default function AdminUsersManagement() {
 
   // Handle remove
   const handleRemove = async (targetAddress: string) => {
-    if (!confirm('Are you sure you want to remove this admin?')) return;
+    if (!confirm(`Are you sure you want to remove this admin on ${chainName}?`)) return;
 
     setActionLoading(targetAddress);
     setMessage(null);
@@ -126,7 +179,7 @@ export default function AdminUsersManagement() {
     const result = await demoteUser(targetAddress, 'remove');
 
     if (result.success) {
-      setMessage({ type: 'success', text: 'Admin removed successfully' });
+      setMessage({ type: 'success', text: `Admin removed successfully on ${chainName}` });
       if (showActivityLog) fetchActivityLog();
     } else {
       setMessage({ type: 'error', text: result.error || 'Failed to remove admin' });
@@ -137,7 +190,7 @@ export default function AdminUsersManagement() {
 
   // Handle promote to super admin
   const handlePromoteToSuper = async (targetAddress: string) => {
-    if (!confirm('Are you sure you want to promote this user to Super Admin?')) return;
+    if (!confirm(`Are you sure you want to promote this user to Super Admin on ${chainName}?`)) return;
 
     setActionLoading(targetAddress);
     setMessage(null);
@@ -145,7 +198,7 @@ export default function AdminUsersManagement() {
     const result = await promoteUser(targetAddress, 'super_admin');
 
     if (result.success) {
-      setMessage({ type: 'success', text: 'Successfully promoted to super admin' });
+      setMessage({ type: 'success', text: `Successfully promoted to super admin on ${chainName}` });
       if (showActivityLog) fetchActivityLog();
     } else {
       setMessage({ type: 'error', text: result.error || 'Failed to promote user' });
@@ -195,10 +248,53 @@ export default function AdminUsersManagement() {
   const superAdminCount = admins.filter(a => a.role === 'super_admin').length;
   const adminCount = admins.filter(a => a.role === 'admin').length;
 
+  // Get explorer URL for address
+  const getExplorerAddressUrl = (addr: string) => {
+    return explorerUrl ? `${explorerUrl}/address/${addr}` : '#';
+  };
+
   return (
     <div className="space-y-6">
+      {/* Network Info Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+        <div className="flex items-center gap-3">
+          <Globe className="w-5 h-5 text-blue-400" />
+          <div>
+            <div className="text-sm text-gray-400">Connected Network</div>
+            <div className="flex items-center gap-2 mt-1">
+              <NetworkBadge chainName={chainName || 'Unknown'} isTestnet={isTestnet} />
+            </div>
+          </div>
+        </div>
+        
+        {/* Network Switcher */}
+        {deployedChains.length > 1 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-gray-500">Switch to:</span>
+            {deployedChains.map((chain) => (
+              <button
+                key={chain.id}
+                onClick={() => handleSwitchNetwork(chain.id)}
+                disabled={chain.id === chainId || isSwitching}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  chain.id === chainId
+                    ? 'bg-blue-500/20 text-blue-400 cursor-default'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+                } disabled:opacity-50`}
+              >
+                {isSwitching ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : (
+                  chain.name
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
@@ -232,6 +328,17 @@ export default function AdminUsersManagement() {
             </div>
           </div>
         </div>
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400">
+              <Network className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{deployedChains.length}</div>
+              <div className="text-gray-400 text-sm">Networks</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Message */}
@@ -256,6 +363,7 @@ export default function AdminUsersManagement() {
           <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-green-400" />
             Add New Admin
+            <span className="text-sm font-normal text-gray-500">on {chainName}</span>
           </h2>
           <form onSubmit={handlePromote} className="space-y-4">
             <div className="grid md:grid-cols-3 gap-4">
@@ -308,6 +416,7 @@ export default function AdminUsersManagement() {
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
             <Shield className="w-5 h-5 text-blue-400" />
             All Admins ({admins.length})
+            <span className="text-sm font-normal text-gray-500">on {chainName}</span>
           </h2>
           <div className="flex items-center gap-2">
             <div className="relative">
@@ -333,7 +442,7 @@ export default function AdminUsersManagement() {
         <div className="divide-y divide-gray-700">
           {filteredAdmins.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
-              {searchQuery ? 'No admins found matching your search' : 'No admins found'}
+              {searchQuery ? 'No admins found matching your search' : `No admins found on ${chainName}`}
             </div>
           ) : (
             filteredAdmins.map((admin) => {
@@ -371,15 +480,17 @@ export default function AdminUsersManagement() {
                         >
                           <Copy className="w-3 h-3" />
                         </button>
-                        <a
-                          href={`${EXPLORER_URL}/address/${admin.wallet_address}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1 text-gray-500 hover:text-white transition-colors"
-                          title="View on explorer"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
+                        {explorerUrl && (
+                          <a
+                            href={getExplorerAddressUrl(admin.wallet_address)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 text-gray-500 hover:text-white transition-colors"
+                            title={`View on ${chainName} explorer`}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
                         {isCurrentUser && (
                           <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded">
                             You
@@ -459,6 +570,7 @@ export default function AdminUsersManagement() {
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
               <Clock className="w-5 h-5 text-purple-400" />
               Activity Log
+              <span className="text-sm font-normal text-gray-500">on {chainName}</span>
             </h2>
             {showActivityLog ? (
               <ChevronUp className="w-5 h-5 text-gray-400" />
@@ -472,10 +584,11 @@ export default function AdminUsersManagement() {
               {loadingActivityLog ? (
                 <div className="p-8 text-center">
                   <RefreshCw className="w-6 h-6 text-gray-500 animate-spin mx-auto" />
+                  <p className="text-gray-500 mt-2">Loading activity from {chainName}...</p>
                 </div>
               ) : activityLog.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
-                  No activity recorded
+                  No activity recorded on {chainName}
                 </div>
               ) : (
                 <div className="divide-y divide-gray-700">
@@ -496,8 +609,14 @@ export default function AdminUsersManagement() {
                           {formatDate(log.created_at)}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        by <span className="font-mono">{formatAddress(log.actor_address)}</span>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                        <span>by <span className="font-mono">{formatAddress(log.actor_address)}</span></span>
+                        {log.chain_name && (
+                          <>
+                            <span>•</span>
+                            <span>{log.chain_name}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -508,12 +627,36 @@ export default function AdminUsersManagement() {
         </div>
       )}
 
+      {/* Network Info Footer */}
+      <div className="bg-gray-800/30 border border-gray-700 rounded-xl p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-sm">
+          <div className="flex items-center gap-4 text-gray-500">
+            <span>Network: <span className="text-gray-300">{chainName}</span></span>
+            <span>•</span>
+            <span>Chain ID: <span className="text-gray-300">{chainId}</span></span>
+            <span>•</span>
+            <span>Currency: <span className="text-gray-300">{nativeCurrency?.symbol || 'ETH'}</span></span>
+          </div>
+          {explorerUrl && (
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View Explorer
+            </a>
+          )}
+        </div>
+      </div>
+
       {/* Info for non-super admins */}
       {!isSuperAdmin && (
         <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 text-center">
           <Shield className="w-12 h-12 text-gray-600 mx-auto mb-3" />
           <p className="text-gray-400">
-            Only Super Admins can add, promote, demote, or remove admins.
+            Only Super Admins can add, promote, demote, or remove admins on {chainName}.
           </p>
         </div>
       )}

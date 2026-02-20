@@ -1,525 +1,841 @@
 // src/app/tokenize/create/[id]/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Header from '@/components/Header';
-import { useAccount, useWriteContract, useReadContract } from 'wagmi';
-import { parseUnits, formatUnits } from 'viem';
 import { 
-  ArrowLeft, Coins, Image as ImageIcon, Lock, Upload, CheckCircle, 
-  AlertCircle, Loader2, ExternalLink, Sparkles, FileText, DollarSign, 
-  Info, ChevronRight, Package, TrendingUp
+  useAccount, 
+  useWriteContract, 
+  useWaitForTransactionReceipt,
+  usePublicClient,
+  useChainId
+} from 'wagmi';
+import { formatUnits, parseUnits, Address, zeroAddress } from 'viem';
+import { 
+  ArrowLeft, 
+  Upload, 
+  Loader2, 
+  CheckCircle2, 
+  AlertCircle, 
+  ExternalLink,
+  FileText,
+  Image as ImageIcon,
+  Settings,
+  Send,
+  Wallet,
+  Globe,
+  AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
-import { CONTRACTS, EXPLORER_URL } from '@/config/contracts';
-import { erc20Abi } from 'viem';
+import { useChainConfig } from '@/hooks/useChainConfig';
+import { ERC20ABI } from '@/config/abis';
 
-// ============ Types ============
-
+// Types
 interface TokenizationApplication {
   id: string;
-  status: string;
-  asset_name: string;
+  user_address: string;
   asset_type: string;
+  asset_name: string;
   asset_description: string;
-  company_name: string;
   estimated_value: number;
-  desired_token_supply: number;
-  needs_escrow: boolean;
-  needs_dividends: boolean;
+  documentation_url?: string;
+  status: string;
+  payment_status: string;
+  payment_amount?: number;
+  payment_tx_hash?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-// ============ Constants ============
+interface DeploymentResult {
+  nftContract: Address;
+  tokenContract: Address;
+  escrowContract?: Address;
+  dividendModule?: Address;
+}
 
-const FACTORY_ADDRESS = CONTRACTS.RWATokenizationFactory as `0x${string}`;
-const USDC_ADDRESS = CONTRACTS.USDC as `0x${string}`;
-
-const FEES = {
-  base: 750,        // Project NFT + ERC3643 Token
-  escrow: 250,      // Trade escrow
-  dividend: 200,    // Dividend distributor
-};
-
-const STEPS = [
-  { id: 'details', label: 'Token Details' },
-  { id: 'media', label: 'Media' },
-  { id: 'options', label: 'Options' },
-  { id: 'review', label: 'Deploy' },
-];
-
-const ASSET_CATEGORIES = [
-  { value: 'real_estate', label: 'Real Estate' },
-  { value: 'art', label: 'Art & Collectibles' },
-  { value: 'equipment', label: 'Equipment' },
-  { value: 'infrastructure', label: 'Infrastructure' },
-  { value: 'commodities', label: 'Commodities' },
-  { value: 'business', label: 'Business Equity' },
-  { value: 'other', label: 'Other' },
-];
-
-// ============ ABI ============
-
-const RWATokenizationFactoryABI = [
+// Factory ABI for tokenization
+const FACTORY_ABI = [
   {
-    inputs: [
-      { name: '_name', type: 'string' },
-      { name: '_symbol', type: 'string' },
-      { name: '_category', type: 'string' },
-      { name: '_tokenSupply', type: 'uint256' },
-      { name: '_metadataURI', type: 'string' },
-      { name: '_withEscrow', type: 'bool' },
-      { name: '_withDividends', type: 'bool' },
-    ],
-    name: 'tokenizeAsset',
-    outputs: [
-      { name: 'tokenizationId', type: 'uint256' },
-      { name: 'projectId', type: 'uint256' },
-      { name: 'securityToken', type: 'address' },
-    ],
+    name: 'deployNFTAndToken',
+    type: 'function',
     stateMutability: 'nonpayable',
-    type: 'function',
-  },
-  {
-    inputs: [{ name: '_deployer', type: 'address' }],
-    name: 'isDeployerApproved',
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'getFees',
-    outputs: [
-      { name: '_baseFee', type: 'uint256' },
-      { name: '_escrowFee', type: 'uint256' },
-      { name: '_dividendFee', type: 'uint256' },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
     inputs: [
-      { name: '_withEscrow', type: 'bool' },
-      { name: '_withDividends', type: 'bool' },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'tokenURI', type: 'string' },
+      { name: 'totalSupply', type: 'uint256' },
+      { name: 'pricePerToken', type: 'uint256' }
     ],
-    name: 'calculateFee',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
+    outputs: [
+      { name: 'nftContract', type: 'address' },
+      { name: 'tokenContract', type: 'address' }
+    ]
   },
+  {
+    name: 'deployWithEscrow',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'tokenURI', type: 'string' },
+      { name: 'totalSupply', type: 'uint256' },
+      { name: 'pricePerToken', type: 'uint256' },
+      { name: 'fundingGoal', type: 'uint256' },
+      { name: 'fundingDeadline', type: 'uint256' }
+    ],
+    outputs: [
+      { name: 'nftContract', type: 'address' },
+      { name: 'tokenContract', type: 'address' },
+      { name: 'escrowContract', type: 'address' }
+    ]
+  },
+  {
+    name: 'addDividendModule',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'tokenContract', type: 'address' }
+    ],
+    outputs: [
+      { name: 'dividendModule', type: 'address' }
+    ]
+  },
+  {
+    name: 'bundleFee',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'escrowFee',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'dividendFee',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'getDeployment',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'deploymentId', type: 'uint256' }],
+    outputs: [
+      { name: 'nftContract', type: 'address' },
+      { name: 'tokenContract', type: 'address' },
+      { name: 'escrowContract', type: 'address' },
+      { name: 'dividendModule', type: 'address' },
+      { name: 'owner', type: 'address' },
+      { name: 'createdAt', type: 'uint256' }
+    ]
+  }
 ] as const;
 
-// ============ Component ============
+// Step definitions
+const STEPS = [
+  { id: 1, name: 'Token Details', icon: FileText },
+  { id: 2, name: 'Media & Files', icon: ImageIcon },
+  { id: 3, name: 'Options', icon: Settings },
+  { id: 4, name: 'Review & Deploy', icon: Send }
+];
 
-export default function TokenCreationPage() {
+export default function TokenCreatePage() {
   const params = useParams();
   const router = useRouter();
-  const { address, isConnected } = useAccount();
   const applicationId = params.id as string;
 
+  // Wagmi hooks
+  const { address, isConnected } = useAccount();
+  const walletChainId = useChainId();
+  const publicClient = usePublicClient();
+  const { writeContractAsync, isPending: isWritePending, error: writeError } = useWriteContract();
+  
+  // Chain config hook for multichain support
+  const {
+    chainId,
+    chainName,
+    contracts,
+    fees,
+    explorerUrl,
+    nativeCurrency,
+    isDeployed,
+    isTestnet,
+    switchToChain,
+    isSwitching,
+    getDeployedChains
+  } = useChainConfig();
+
+  // Derive contract addresses from chain config
+  const factoryAddress = useMemo(() => 
+    contracts?.RWATokenizationFactory as Address | undefined,
+    [contracts]
+  );
+
+  const usdcAddress = useMemo(() => 
+    contracts?.USDC as Address | undefined,
+    [contracts]
+  );
+
+  const adminAddress = process.env.NEXT_PUBLIC_ADMIN_ADDRESS as Address | undefined;
+
+  // Check for wrong chain
+  const isWrongChain = useMemo(() => 
+    isConnected && walletChainId !== chainId,
+    [isConnected, walletChainId, chainId]
+  );
+
   // State
+  const [currentStep, setCurrentStep] = useState(1);
   const [application, setApplication] = useState<TokenizationApplication | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentStep, setCurrentStep] = useState(0);
   
+  // Form state
   const [formData, setFormData] = useState({
-    name: '',
-    symbol: '',
-    category: 'real_estate',
-    tokenSupply: '',
+    tokenName: '',
+    tokenSymbol: '',
+    totalSupply: '1000000',
+    pricePerToken: '1',
     description: '',
-    
-    // Media
-    logoUrl: '',
-    bannerUrl: '',
-    
-    // Options
-    withEscrow: false,
-    withDividends: false,
+    imageUrl: '',
+    documentUrl: '',
+    useEscrow: true,
+    fundingGoal: '100000',
+    fundingDeadline: '',
+    addDividends: false
   });
 
   // Deployment state
-  const [isApproving, setIsApproving] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
-  const [isUploadingMetadata, setIsUploadingMetadata] = useState(false);
-  const [deploymentSuccess, setDeploymentSuccess] = useState(false);
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [deployedAddresses, setDeployedAddresses] = useState<{
-    tokenizationId?: string;
-    projectId?: string;
-    securityToken?: string;
-  }>({});
-  const [deploymentError, setDeploymentError] = useState<string | null>(null);
+  const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'uploading' | 'approving' | 'deploying' | 'success' | 'error'>('idle');
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
+  const [deployedContracts, setDeployedContracts] = useState<DeploymentResult | null>(null);
+  const [metadataUri, setMetadataUri] = useState<string>('');
 
-  const { writeContractAsync } = useWriteContract();
-
-  // Read USDC allowance & balance
-  const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
-    address: USDC_ADDRESS,
-    abi: erc20Abi,
-    functionName: 'allowance',
-    args: address ? [address, FACTORY_ADDRESS] : undefined,
+  // Fee state
+  const [contractFees, setContractFees] = useState({
+    bundleFee: BigInt(0),
+    escrowFee: BigInt(0),
+    dividendFee: BigInt(0)
   });
 
-  const { data: usdcBalance } = useReadContract({
-    address: USDC_ADDRESS,
-    abi: erc20Abi,
-    functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+  // Balance state
+  const [usdcBalance, setUsdcBalance] = useState<bigint>(BigInt(0));
+  const [usdcAllowance, setUsdcAllowance] = useState<bigint>(BigInt(0));
+
+  // Transaction receipt
+  const { data: txReceipt, isLoading: isConfirming } = useWaitForTransactionReceipt({
+    hash: txHash
   });
 
-  const { data: isApproved } = useReadContract({
-    address: FACTORY_ADDRESS,
-    abi: RWATokenizationFactoryABI,
-    functionName: 'isDeployerApproved',
-    args: address ? [address] : undefined,
-  });
-
-  // Calculate total fee
-  const totalFee = FEES.base + 
-    (formData.withEscrow ? FEES.escrow : 0) + 
-    (formData.withDividends ? FEES.dividend : 0);
-  const totalFeeWei = parseUnits(totalFee.toString(), 6);
-
-  // ============ Load Application ============
-
+  // Load application data
   const loadApplication = useCallback(async () => {
-    if (!address) return;
-
+    if (!applicationId) return;
+    
     try {
       setLoading(true);
-      const response = await fetch(`/api/tokenization/${applicationId}`, {
-        headers: { 'x-wallet-address': address },
-      });
-
-      if (!response.ok) throw new Error('Application not found');
-
+      const response = await fetch(`/api/tokenization/${applicationId}`);
+      if (!response.ok) throw new Error('Failed to load application');
+      
       const data = await response.json();
       
-      if (data.status !== 'creation_ready') {
-        setError(`Application not ready for creation. Current status: ${data.status}`);
+      if (data.status !== 'approved' || data.payment_status !== 'paid') {
+        setError('This application must be approved and paid before creating tokens');
         return;
       }
-
+      
       setApplication(data);
+      
+      // Pre-fill form with application data
       setFormData(prev => ({
         ...prev,
-        name: data.asset_name || '',
-        symbol: generateSymbol(data.asset_name || ''),
-        category: data.asset_type || 'real_estate',
-        tokenSupply: data.desired_token_supply?.toString() || '1000000',
+        tokenName: data.asset_name || '',
+        tokenSymbol: (data.asset_name || '').substring(0, 4).toUpperCase(),
         description: data.asset_description || '',
-        withEscrow: data.needs_escrow || false,
-        withDividends: data.needs_dividends || false,
+        fundingGoal: String(data.estimated_value || 100000)
       }));
-
+      
     } catch (err) {
+      console.error('Error loading application:', err);
       setError(err instanceof Error ? err.message : 'Failed to load application');
     } finally {
       setLoading(false);
     }
-  }, [address, applicationId]);
+  }, [applicationId]);
 
+  // Load contract fees
+  const loadFees = useCallback(async () => {
+    if (!publicClient || !factoryAddress || !isDeployed) return;
+    
+    try {
+      const [bundleFee, escrowFee, dividendFee] = await Promise.all([
+        publicClient.readContract({
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: 'bundleFee'
+        }),
+        publicClient.readContract({
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: 'escrowFee'
+        }),
+        publicClient.readContract({
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: 'dividendFee'
+        })
+      ]);
+      
+      setContractFees({ bundleFee, escrowFee, dividendFee });
+    } catch (err) {
+      console.error('Error loading fees:', err);
+      // Use default fees from config
+      if (fees) {
+        setContractFees({
+          bundleFee: BigInt(fees.TOKENIZATION_FEE || 0),
+          escrowFee: BigInt(fees.ESCROW_FEE || 0),
+          dividendFee: BigInt(fees.DIVIDEND_FEE || 0)
+        });
+      }
+    }
+  }, [publicClient, factoryAddress, isDeployed, fees]);
+
+  // Load USDC balance and allowance
+  const loadBalances = useCallback(async () => {
+    if (!publicClient || !address || !usdcAddress || !factoryAddress) return;
+    
+    try {
+      const [balance, allowance] = await Promise.all([
+        publicClient.readContract({
+          address: usdcAddress,
+          abi: ERC20ABI,
+          functionName: 'balanceOf',
+          args: [address]
+        }),
+        publicClient.readContract({
+          address: usdcAddress,
+          abi: ERC20ABI,
+          functionName: 'allowance',
+          args: [address, factoryAddress]
+        })
+      ]);
+      
+      setUsdcBalance(balance as bigint);
+      setUsdcAllowance(allowance as bigint);
+    } catch (err) {
+      console.error('Error loading balances:', err);
+    }
+  }, [publicClient, address, usdcAddress, factoryAddress]);
+
+  // Effects
   useEffect(() => {
     loadApplication();
   }, [loadApplication]);
 
-  // ============ Helpers ============
+  useEffect(() => {
+    loadFees();
+  }, [loadFees]);
 
-  function generateSymbol(name: string): string {
-    return name
-      .split(' ')
-      .map(w => w[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 5) || 'RWA';
-  }
+  useEffect(() => {
+    loadBalances();
+  }, [loadBalances]);
 
-  function formatUSD(amount: number): string {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  }
-
-  // ============ File Upload ============
-
-  async function handleFileUpload(
-    e: React.ChangeEvent<HTMLInputElement>, 
-    field: 'logoUrl' | 'bannerUrl'
-  ) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const formDataUpload = new FormData();
-      formDataUpload.append('file', file);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formDataUpload,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setFormData(prev => ({ ...prev, [field]: data.url }));
-      }
-    } catch (err) {
-      console.error('Upload failed:', err);
+  useEffect(() => {
+    if (txReceipt?.status === 'success') {
+      handleDeploymentSuccess();
     }
-  }
+  }, [txReceipt]);
 
-  // ============ Metadata Upload ============
+  // Calculate total fee
+  const totalFee = useMemo(() => {
+    let fee = contractFees.bundleFee;
+    if (formData.useEscrow) fee += contractFees.escrowFee;
+    if (formData.addDividends) fee += contractFees.dividendFee;
+    return fee;
+  }, [contractFees, formData.useEscrow, formData.addDividends]);
 
-  async function uploadMetadata(): Promise<string> {
+  const formattedTotalFee = useMemo(() => 
+    formatUnits(totalFee, 6),
+    [totalFee]
+  );
+
+  const hasInsufficientBalance = useMemo(() => 
+    usdcBalance < totalFee,
+    [usdcBalance, totalFee]
+  );
+
+  const needsApproval = useMemo(() => 
+    usdcAllowance < totalFee,
+    [usdcAllowance, totalFee]
+  );
+
+  // File upload handler
+  const handleFileUpload = async (file: File, type: 'image' | 'document'): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', type);
+    
+    const response = await fetch('/api/ipfs/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) throw new Error('Failed to upload file');
+    
+    const data = await response.json();
+    return data.url;
+  };
+
+  // Upload metadata to IPFS
+  const uploadMetadata = async (): Promise<string> => {
     const metadata = {
-      name: formData.name,
-      symbol: formData.symbol,
+      name: formData.tokenName,
+      symbol: formData.tokenSymbol,
       description: formData.description,
-      image: formData.logoUrl,
-      banner: formData.bannerUrl,
-      category: formData.category,
+      image: formData.imageUrl,
+      external_url: formData.documentUrl,
       attributes: [
-        { trait_type: 'Category', value: formData.category },
-        { trait_type: 'Total Supply', value: formData.tokenSupply },
-        { trait_type: 'Company', value: application?.company_name },
-        { trait_type: 'Estimated Value', value: application?.estimated_value },
-        { trait_type: 'Has Escrow', value: formData.withEscrow },
-        { trait_type: 'Has Dividends', value: formData.withDividends },
-      ],
-      created_at: new Date().toISOString(),
+        { trait_type: 'Total Supply', value: formData.totalSupply },
+        { trait_type: 'Price Per Token', value: formData.pricePerToken },
+        { trait_type: 'Asset Type', value: application?.asset_type || 'Unknown' },
+        { trait_type: 'Chain', value: chainName },
+        { trait_type: 'Chain ID', value: chainId.toString() }
+      ]
     };
-
-    const response = await fetch('/api/upload/metadata', {
+    
+    const response = await fetch('/api/ipfs/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(metadata),
+      body: JSON.stringify({ metadata, type: 'metadata' })
     });
-
+    
     if (!response.ok) throw new Error('Failed to upload metadata');
     
     const data = await response.json();
     return data.url;
-  }
+  };
 
-  // ============ Deploy ============
+  // Handle USDC approval
+  const handleApprove = async () => {
+    if (!usdcAddress || !factoryAddress) return;
+    
+    try {
+      setDeploymentStatus('approving');
+      
+      const hash = await writeContractAsync({
+        address: usdcAddress,
+        abi: ERC20ABI,
+        functionName: 'approve',
+        args: [factoryAddress, totalFee]
+      });
+      
+      setTxHash(hash);
+    } catch (err) {
+      console.error('Approval error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to approve USDC');
+      setDeploymentStatus('error');
+    }
+  };
 
-  async function handleDeploy() {
-    if (!application || !address) return;
-
+  // Handle deployment
+  const handleDeploy = async () => {
+    if (!factoryAddress || !isDeployed) {
+      setError('Tokenization factory not available on this network');
+      return;
+    }
+    
+    if (isWrongChain) {
+      setError('Please switch to the correct network');
+      return;
+    }
+    
     try {
       setIsDeploying(true);
-      setDeploymentError(null);
-
-      // Check balance
-      if (usdcBalance && usdcBalance < totalFeeWei) {
-        throw new Error(`Insufficient USDC balance. Need ${formatUSD(totalFee)}`);
-      }
-
-      // Approve USDC if needed
-      if (!usdcAllowance || usdcAllowance < totalFeeWei) {
-        setIsApproving(true);
-        const approveHash = await writeContractAsync({
-          address: USDC_ADDRESS,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [FACTORY_ADDRESS, totalFeeWei],
-        });
-        
-        // Wait a bit for approval to be mined
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        await refetchAllowance();
-        setIsApproving(false);
-      }
-
+      setDeploymentStatus('uploading');
+      setError(null);
+      
       // Upload metadata to IPFS
-      setIsUploadingMetadata(true);
-      const metadataURI = await uploadMetadata();
-      setIsUploadingMetadata(false);
-
-      // Deploy via factory
-      const hash = await writeContractAsync({
-        address: FACTORY_ADDRESS,
-        abi: RWATokenizationFactoryABI,
-        functionName: 'tokenizeAsset',
-        args: [
-          formData.name,
-          formData.symbol,
-          formData.category,
-          parseUnits(formData.tokenSupply, 18),
-          metadataURI,
-          formData.withEscrow,
-          formData.withDividends,
-        ],
-      });
-
+      const tokenUri = await uploadMetadata();
+      setMetadataUri(tokenUri);
+      
+      setDeploymentStatus('deploying');
+      
+      const totalSupplyWei = parseUnits(formData.totalSupply, 18);
+      const pricePerTokenWei = parseUnits(formData.pricePerToken, 6); // USDC decimals
+      
+      let hash: `0x${string}`;
+      
+      if (formData.useEscrow) {
+        const fundingGoalWei = parseUnits(formData.fundingGoal, 6);
+        const deadlineTimestamp = BigInt(Math.floor(new Date(formData.fundingDeadline).getTime() / 1000));
+        
+        hash = await writeContractAsync({
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: 'deployWithEscrow',
+          args: [
+            formData.tokenName,
+            formData.tokenSymbol,
+            tokenUri,
+            totalSupplyWei,
+            pricePerTokenWei,
+            fundingGoalWei,
+            deadlineTimestamp
+          ]
+        });
+      } else {
+        hash = await writeContractAsync({
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: 'deployNFTAndToken',
+          args: [
+            formData.tokenName,
+            formData.tokenSymbol,
+            tokenUri,
+            totalSupplyWei,
+            pricePerTokenWei
+          ]
+        });
+      }
+      
       setTxHash(hash);
+      
+    } catch (err: any) {
+      console.error('Deployment error:', err);
+      
+      if (err.message?.includes('User rejected') || err.message?.includes('user rejected')) {
+        setError('Transaction was rejected');
+      } else if (err.message?.includes('insufficient funds')) {
+        setError(`Insufficient ${nativeCurrency} for gas fees`);
+      } else {
+        setError(err.message || 'Deployment failed');
+      }
+      
+      setDeploymentStatus('error');
+      setIsDeploying(false);
+    }
+  };
 
-      // Record deployment in database
+  // Handle deployment success
+  const handleDeploymentSuccess = async () => {
+    if (!txReceipt || !application) return;
+    
+    try {
+      // Parse deployment events from receipt
+      // This would need to be adjusted based on actual event structure
+      const deployed: DeploymentResult = {
+        nftContract: zeroAddress,
+        tokenContract: zeroAddress
+      };
+      
+      // Record deployment via API
       await fetch(`/api/tokenization/${applicationId}/deploy`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-wallet-address': address,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          txHash: hash,
-          metadataURI,
-          name: formData.name,
-          symbol: formData.symbol,
-          tokenSupply: formData.tokenSupply,
-          category: formData.category,
-          withEscrow: formData.withEscrow,
-          withDividends: formData.withDividends,
-        }),
+          txHash,
+          chainId,
+          contracts: deployed,
+          metadataUri
+        })
       });
-
-      setDeploymentSuccess(true);
-
+      
+      setDeployedContracts(deployed);
+      setDeploymentStatus('success');
+      
     } catch (err) {
-      console.error('Deploy error:', err);
-      setDeploymentError(err instanceof Error ? err.message : 'Deployment failed');
+      console.error('Error recording deployment:', err);
     } finally {
       setIsDeploying(false);
-      setIsApproving(false);
-      setIsUploadingMetadata(false);
     }
-  }
+  };
 
-  // ============ Render: Loading ============
+  // Handle network switch
+  const handleSwitchNetwork = async (targetChainId: number) => {
+    try {
+      await switchToChain(targetChainId);
+    } catch (err) {
+      console.error('Failed to switch network:', err);
+    }
+  };
 
+  // Form handlers
+  const handleInputChange = (field: string, value: string | boolean) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+      const url = await handleFileUpload(file, 'image');
+      setFormData(prev => ({ ...prev, imageUrl: url }));
+    } catch (err) {
+      setError('Failed to upload image');
+    }
+  };
+
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+      const url = await handleFileUpload(file, 'document');
+      setFormData(prev => ({ ...prev, documentUrl: url }));
+    } catch (err) {
+      setError('Failed to upload document');
+    }
+  };
+
+  // Validation
+  const isStepValid = (step: number): boolean => {
+    switch (step) {
+      case 1:
+        return !!(formData.tokenName && formData.tokenSymbol && formData.totalSupply && formData.pricePerToken);
+      case 2:
+        return true; // Media is optional
+      case 3:
+        if (formData.useEscrow) {
+          return !!(formData.fundingGoal && formData.fundingDeadline);
+        }
+        return true;
+      case 4:
+        return !hasInsufficientBalance && isStepValid(1) && isStepValid(3);
+      default:
+        return false;
+    }
+  };
+
+  // Explorer URL helpers
+  const getTxUrl = (hash: string) => `${explorerUrl}/tx/${hash}`;
+  const getAddressUrl = (addr: string) => `${explorerUrl}/address/${addr}`;
+
+  // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900">
-        <Header />
-        <div className="flex items-center justify-center h-[60vh]">
-          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-purple-500 mx-auto mb-4" />
+          <p className="text-gray-400">Loading application...</p>
         </div>
       </div>
     );
   }
 
-  // ============ Render: Error ============
-
-  if (error || !application) {
+  // Not connected
+  if (!isConnected) {
     return (
-      <div className="min-h-screen bg-gray-900">
-        <Header />
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-lg mx-auto bg-gray-800 rounded-xl p-8 text-center">
-            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-white mb-4">Error</h2>
-            <p className="text-gray-400 mb-6">{error || 'Application not found'}</p>
-            <Link 
-              href="/tokenize" 
-              className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300"
-            >
-              <ArrowLeft className="w-4 h-4" /> Back to Tokenize
-            </Link>
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800 rounded-2xl p-8 max-w-md text-center">
+          <Wallet className="h-16 w-16 text-purple-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Connect Wallet</h2>
+          <p className="text-gray-400 mb-6">
+            Please connect your wallet to create tokens.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Network not supported
+  if (!isDeployed) {
+    const deployedChains = getDeployedChains();
+    
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800 rounded-2xl p-8 max-w-md text-center">
+          <Globe className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Network Not Supported</h2>
+          <p className="text-gray-400 mb-6">
+            Token creation is not available on {chainName}. Please switch to a supported network.
+          </p>
+          <div className="space-y-2">
+            {deployedChains.map((chain) => (
+              <button
+                key={chain.chainId}
+                onClick={() => handleSwitchNetwork(chain.chainId)}
+                disabled={isSwitching}
+                className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded-lg text-white font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                {isSwitching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Switch to {chain.name}
+                {chain.isTestnet && (
+                  <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
+                    Testnet
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
       </div>
     );
   }
 
-  // ============ Render: Success ============
-
-  if (deploymentSuccess) {
+  // Wrong chain warning
+  if (isWrongChain) {
     return (
-      <div className="min-h-screen bg-gray-900">
-        <Header />
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-2xl mx-auto bg-gray-800 rounded-xl p-8 text-center">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800 rounded-2xl p-8 max-w-md text-center">
+          <AlertTriangle className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Wrong Network</h2>
+          <p className="text-gray-400 mb-6">
+            Please switch to {chainName} to continue.
+          </p>
+          <button
+            onClick={() => handleSwitchNetwork(chainId)}
+            disabled={isSwitching}
+            className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded-lg text-white font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            {isSwitching ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            Switch to {chainName}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && !application) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800 rounded-2xl p-8 max-w-md text-center">
+          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Error</h2>
+          <p className="text-gray-400 mb-6">{error}</p>
+          <Link
+            href="/tokenize"
+            className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Applications
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Success state
+  if (deploymentStatus === 'success' && deployedContracts) {
+    return (
+      <div className="min-h-screen bg-gray-900 py-12">
+        <div className="max-w-2xl mx-auto px-4">
+          <div className="bg-gray-800 rounded-2xl p-8 text-center">
             <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-green-400" />
+              <CheckCircle2 className="h-10 w-10 text-green-500" />
             </div>
             
-            <h2 className="text-2xl font-bold text-white mb-2">
-              Asset Tokenized Successfully!
-            </h2>
-            <p className="text-gray-400 mb-6">
-              Your RWA project and security tokens have been created.
+            <h2 className="text-3xl font-bold text-white mb-2">Token Created!</h2>
+            <p className="text-gray-400 mb-8">
+              Your {formData.tokenName} token has been successfully deployed on {chainName}.
             </p>
-            
-            {txHash && (
-              <a
-                href={`${EXPLORER_URL}/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-6"
-              >
-                View Transaction <ExternalLink className="w-4 h-4" />
-              </a>
-            )}
 
-            {/* What was created */}
-            <div className="bg-gray-700 rounded-lg p-4 mb-6 text-left">
-              <h3 className="text-white font-medium mb-3">What was created:</h3>
-              <ul className="space-y-2 text-gray-300 text-sm">
-                <li className="flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-purple-400" />
-                  Project NFT (RWAProjectNFT)
-                </li>
-                <li className="flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-blue-400" />
-                  {Number(formData.tokenSupply).toLocaleString()} {formData.symbol} tokens (ERC3643)
-                </li>
-                {formData.withEscrow && (
-                  <li className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-green-400" />
-                    Escrow Vault for trading
-                  </li>
-                )}
-                {formData.withDividends && (
-                  <li className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-yellow-400" />
-                    Dividend Distributor
-                  </li>
-                )}
-              </ul>
+            {/* Network Badge */}
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                isTestnet 
+                  ? 'bg-yellow-500/20 text-yellow-400' 
+                  : 'bg-green-500/20 text-green-400'
+              }`}>
+                {chainName} {isTestnet ? '(Testnet)' : '(Mainnet)'}
+              </span>
             </div>
 
-            {/* Token Info */}
-            <div className="bg-gray-700 rounded-lg p-4 mb-6">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="text-left">
-                  <p className="text-gray-400">Token Name</p>
-                  <p className="text-white font-medium">{formData.name}</p>
-                </div>
-                <div className="text-left">
-                  <p className="text-gray-400">Symbol</p>
-                  <p className="text-white font-medium">{formData.symbol}</p>
-                </div>
-                <div className="text-left">
-                  <p className="text-gray-400">Total Supply</p>
-                  <p className="text-white font-medium">
-                    {Number(formData.tokenSupply).toLocaleString()}
-                  </p>
-                </div>
-                <div className="text-left">
-                  <p className="text-gray-400">Category</p>
-                  <p className="text-white font-medium capitalize">
-                    {formData.category.replace('_', ' ')}
-                  </p>
-                </div>
+            {/* Deployed Contracts */}
+            <div className="bg-gray-900 rounded-xl p-6 mb-8 text-left">
+              <h3 className="text-lg font-semibold text-white mb-4">Deployed Contracts</h3>
+              
+              <div className="space-y-3">
+                {deployedContracts.nftContract && deployedContracts.nftContract !== zeroAddress && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">NFT Contract</span>
+                    <a
+                      href={getAddressUrl(deployedContracts.nftContract)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-mono text-sm"
+                    >
+                      {deployedContracts.nftContract.slice(0, 8)}...{deployedContracts.nftContract.slice(-6)}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+                
+                {deployedContracts.tokenContract && deployedContracts.tokenContract !== zeroAddress && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Token Contract</span>
+                    <a
+                      href={getAddressUrl(deployedContracts.tokenContract)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-mono text-sm"
+                    >
+                      {deployedContracts.tokenContract.slice(0, 8)}...{deployedContracts.tokenContract.slice(-6)}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+                
+                {deployedContracts.escrowContract && deployedContracts.escrowContract !== zeroAddress && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Escrow Contract</span>
+                    <a
+                      href={getAddressUrl(deployedContracts.escrowContract)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-mono text-sm"
+                    >
+                      {deployedContracts.escrowContract.slice(0, 8)}...{deployedContracts.escrowContract.slice(-6)}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
               </div>
+
+              {txHash && (
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Transaction</span>
+                    <a
+                      href={getTxUrl(txHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-mono text-sm"
+                    >
+                      {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex justify-center gap-4">
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                href="/portfolio"
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                href={`/tokenize`}
+                className="flex-1 py-3 px-6 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-medium transition-colors text-center"
               >
-                View Portfolio
+                Back to Applications
               </Link>
               <Link
-                href="/tokenize"
-                className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                href={`/crowdfunding`}
+                className="flex-1 py-3 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-medium transition-colors text-center"
               >
-                Back to Tokenize
+                View Projects
               </Link>
             </div>
           </div>
@@ -528,556 +844,521 @@ export default function TokenCreationPage() {
     );
   }
 
-  // ============ Render: Main Form ============
-
+  // Main form
   return (
-    <div className="min-h-screen bg-gray-900">
-      <Header />
-      
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gray-900 py-12">
+      <div className="max-w-4xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
-          <Link 
-            href="/tokenize" 
-            className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-4 transition-colors"
+          <Link
+            href="/tokenize"
+            className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-4"
           >
-            <ArrowLeft className="w-5 h-5" /> Back to Applications
+            <ArrowLeft className="h-4 w-4" />
+            Back to Applications
           </Link>
-          <h1 className="text-3xl font-bold text-white">Create Your Tokenized Asset</h1>
-          <p className="text-gray-400 mt-2">
-            Deploy your RWA project with ERC3643 compliant security tokens
-          </p>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Create Token</h1>
+              <p className="text-gray-400 mt-1">
+                Deploy your tokenized asset on {chainName}
+              </p>
+            </div>
+            
+            {/* Network Badge */}
+            <div className={`px-4 py-2 rounded-lg ${
+              isTestnet 
+                ? 'bg-yellow-500/20 text-yellow-400' 
+                : 'bg-green-500/20 text-green-400'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4" />
+                <span className="font-medium">{chainName}</span>
+                {isTestnet && <span className="text-xs">(Testnet)</span>}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Step Indicator */}
-        <div className="flex items-center justify-center mb-8 gap-1 sm:gap-2 overflow-x-auto pb-2">
-          {STEPS.map((step, i) => (
-            <div key={step.id} className="flex items-center">
-              <button
-                onClick={() => i < currentStep && setCurrentStep(i)}
-                disabled={i > currentStep}
-                className={`px-3 sm:px-4 py-2 rounded-lg flex items-center gap-2 text-sm sm:text-base transition-colors ${
-                  i === currentStep 
-                    ? 'bg-blue-600 text-white' 
-                    : i < currentStep 
-                      ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 cursor-pointer' 
-                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                {i < currentStep ? (
-                  <CheckCircle className="w-4 h-4" />
-                ) : (
-                  <span className="w-5 h-5 flex items-center justify-center text-xs font-bold">
-                    {i + 1}
-                  </span>
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            {STEPS.map((step, index) => (
+              <div key={step.id} className="flex items-center">
+                <button
+                  onClick={() => setCurrentStep(step.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                    currentStep === step.id
+                      ? 'bg-purple-600 text-white'
+                      : currentStep > step.id
+                      ? 'bg-green-600/20 text-green-400'
+                      : 'bg-gray-800 text-gray-400'
+                  }`}
+                >
+                  <step.icon className="h-5 w-5" />
+                  <span className="hidden sm:inline">{step.name}</span>
+                </button>
+                {index < STEPS.length - 1 && (
+                  <div className={`w-8 h-0.5 mx-2 ${
+                    currentStep > step.id ? 'bg-green-500' : 'bg-gray-700'
+                  }`} />
                 )}
-                <span className="hidden sm:inline">{step.label}</span>
-              </button>
-              {i < STEPS.length - 1 && (
-                <ChevronRight className="w-4 h-4 text-gray-600 mx-1" />
-              )}
-            </div>
-          ))}
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="max-w-3xl mx-auto">
-          {/* Error Message */}
-          {deploymentError && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-red-400 font-medium">Deployment Failed</p>
-                <p className="text-red-300/70 text-sm mt-1">{deploymentError}</p>
-              </div>
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-6 bg-red-500/20 border border-red-500 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-red-400">{error}</p>
             </div>
-          )}
+            <button
+              onClick={() => setError(null)}
+              className="text-red-400 hover:text-red-300"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
-          {/* Step 0: Token Details */}
-          {currentStep === 0 && (
+        {/* Form Content */}
+        <div className="bg-gray-800 rounded-2xl p-8">
+          {/* Step 1: Token Details */}
+          {currentStep === 1 && (
             <div className="space-y-6">
-              {/* Info Banner */}
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                <p className="text-blue-300 text-sm">
-                  You're creating a <strong>Project NFT</strong> (representing your asset) and 
-                  <strong> ERC3643 security tokens</strong> (fractionalized ownership). 
-                  All tokens will be minted to your wallet.
-                </p>
-              </div>
-
-              <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Package className="w-5 h-5 text-blue-400" />
-                  Token Details
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">Token Name *</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                      placeholder="Manhattan Office Building"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">Token Symbol *</label>
-                    <input
-                      type="text"
-                      value={formData.symbol}
-                      onChange={e => setFormData(prev => ({ 
-                        ...prev, 
-                        symbol: e.target.value.toUpperCase().slice(0, 5) 
-                      }))}
-                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white uppercase focus:border-blue-500 focus:outline-none"
-                      placeholder="MOB"
-                      maxLength={5}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">Category *</label>
-                    <select
-                      value={formData.category}
-                      onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                    >
-                      {ASSET_CATEGORIES.map(cat => (
-                        <option key={cat.value} value={cat.value}>{cat.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">Token Supply *</label>
-                    <input
-                      type="number"
-                      value={formData.tokenSupply}
-                      onChange={e => setFormData(prev => ({ ...prev, tokenSupply: e.target.value }))}
-                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:outline-none"
-                      placeholder="1000000"
-                      min="1"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">All tokens minted to your wallet</p>
-                  </div>
-                </div>
-
+              <h2 className="text-xl font-semibold text-white mb-4">Token Details</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white resize-none focus:border-blue-500 focus:outline-none"
-                    rows={3}
-                    placeholder="Describe your tokenized asset..."
+                  <label className="block text-gray-400 mb-2">Token Name *</label>
+                  <input
+                    type="text"
+                    value={formData.tokenName}
+                    onChange={(e) => handleInputChange('tokenName', e.target.value)}
+                    placeholder="e.g., Real Estate Token"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-gray-400 mb-2">Token Symbol *</label>
+                  <input
+                    type="text"
+                    value={formData.tokenSymbol}
+                    onChange={(e) => handleInputChange('tokenSymbol', e.target.value.toUpperCase())}
+                    placeholder="e.g., RET"
+                    maxLength={8}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-gray-400 mb-2">Total Supply *</label>
+                  <input
+                    type="number"
+                    value={formData.totalSupply}
+                    onChange={(e) => handleInputChange('totalSupply', e.target.value)}
+                    placeholder="1000000"
+                    min="1"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-gray-400 mb-2">Price per Token (USDC) *</label>
+                  <input
+                    type="number"
+                    value={formData.pricePerToken}
+                    onChange={(e) => handleInputChange('pricePerToken', e.target.value)}
+                    placeholder="1.00"
+                    min="0.01"
+                    step="0.01"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
-
-              {/* Navigation */}
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setCurrentStep(1)}
-                  disabled={!formData.name || !formData.symbol || !formData.tokenSupply}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-                >
-                  Continue <ChevronRight className="w-5 h-5" />
-                </button>
+              
+              <div>
+                <label className="block text-gray-400 mb-2">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  placeholder="Describe your tokenized asset..."
+                  rows={4}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
+                />
               </div>
             </div>
           )}
 
-          {/* Step 1: Media */}
-          {currentStep === 1 && (
+          {/* Step 2: Media & Files */}
+          {currentStep === 2 && (
             <div className="space-y-6">
-              <div className="bg-gray-800 rounded-xl p-6 space-y-6">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Upload className="w-5 h-5 text-green-400" />
-                  Branding & Media
-                </h3>
-
-                {/* Logo Upload */}
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Logo Image</label>
-                  <div className="flex items-start gap-4">
-                    <div className="w-24 h-24 bg-gray-700 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {formData.logoUrl ? (
-                        <img src={formData.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon className="w-8 h-8 text-gray-500" />
-                      )}
+              <h2 className="text-xl font-semibold text-white mb-4">Media & Files</h2>
+              
+              <div>
+                <label className="block text-gray-400 mb-2">Token Image</label>
+                <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center">
+                  {formData.imageUrl ? (
+                    <div className="space-y-4">
+                      <img
+                        src={formData.imageUrl}
+                        alt="Token"
+                        className="w-32 h-32 object-cover rounded-lg mx-auto"
+                      />
+                      <button
+                        onClick={() => handleInputChange('imageUrl', '')}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <div>
+                  ) : (
+                    <label className="cursor-pointer">
+                      <Upload className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+                      <p className="text-gray-400 mb-2">Click to upload or drag and drop</p>
+                      <p className="text-gray-500 text-sm">PNG, JPG, GIF up to 10MB</p>
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={e => handleFileUpload(e, 'logoUrl')}
+                        onChange={handleImageUpload}
                         className="hidden"
-                        id="logo-upload"
                       />
-                      <label
-                        htmlFor="logo-upload"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg cursor-pointer transition-colors"
-                      >
-                        <Upload className="w-4 h-4" />
-                        Upload Logo
-                      </label>
-                      <p className="text-xs text-gray-500 mt-2">
-                        Recommended: 400x400px, PNG or JPG
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Banner Upload */}
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Banner Image</label>
-                  <div className="space-y-3">
-                    <div className="w-full h-32 bg-gray-700 rounded-xl flex items-center justify-center overflow-hidden">
-                      {formData.bannerUrl ? (
-                        <img src={formData.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="text-center">
-                          <ImageIcon className="w-8 h-8 text-gray-500 mx-auto mb-2" />
-                          <p className="text-gray-500 text-sm">No banner uploaded</p>
-                        </div>
-                      )}
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={e => handleFileUpload(e, 'bannerUrl')}
-                      className="hidden"
-                      id="banner-upload"
-                    />
-                    <label
-                      htmlFor="banner-upload"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg cursor-pointer transition-colors"
-                    >
-                      <Upload className="w-4 h-4" />
-                      Upload Banner
                     </label>
-                    <p className="text-xs text-gray-500">
-                      Recommended: 1200x300px, PNG or JPG
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Preview */}
-              <div className="bg-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Preview</h3>
-                <div className="bg-gray-900 rounded-xl overflow-hidden">
-                  {formData.bannerUrl && (
-                    <div className="h-20 overflow-hidden">
-                      <img src={formData.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
-                    </div>
                   )}
-                  <div className="p-4 flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gray-700 rounded-xl overflow-hidden flex-shrink-0">
-                      {formData.logoUrl ? (
-                        <img src={formData.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Coins className="w-6 h-6 text-gray-500" />
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <h4 className="text-white font-semibold">{formData.name || 'Token Name'}</h4>
-                      <p className="text-gray-400 text-sm">{formData.symbol || 'SYMBOL'}</p>
-                    </div>
-                  </div>
                 </div>
               </div>
-
-              {/* Navigation */}
-              <div className="flex justify-between">
-                <button
-                  onClick={() => setCurrentStep(0)}
-                  className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => setCurrentStep(2)}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-                >
-                  Continue <ChevronRight className="w-5 h-5" />
-                </button>
+              
+              <div>
+                <label className="block text-gray-400 mb-2">Supporting Documents</label>
+                <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center">
+                  {formData.documentUrl ? (
+                    <div className="space-y-4">
+                      <FileText className="h-12 w-12 text-purple-500 mx-auto" />
+                      <a
+                        href={formData.documentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-400 hover:text-purple-300"
+                      >
+                        View Document
+                      </a>
+                      <button
+                        onClick={() => handleInputChange('documentUrl', '')}
+                        className="block mx-auto text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer">
+                      <Upload className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+                      <p className="text-gray-400 mb-2">Upload supporting documentation</p>
+                      <p className="text-gray-500 text-sm">PDF, DOC up to 50MB</p>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={handleDocumentUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
             </div>
           )}
 
-          {/* Step 2: Options */}
-          {currentStep === 2 && (
-            <div className="space-y-6">
-              <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-yellow-400" />
-                  Optional Add-ons
-                </h3>
-
-                {/* Escrow Option */}
-                <label className="flex items-start gap-4 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-650 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={formData.withEscrow}
-                    onChange={e => setFormData(prev => ({ ...prev, withEscrow: e.target.checked }))}
-                    className="mt-1 w-5 h-5 rounded border-gray-500 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-white font-medium flex items-center gap-2">
-                        <Lock className="w-4 h-4 text-green-400" />
-                        Trade Escrow
-                      </span>
-                      <span className="text-green-400 text-sm font-medium">+{formatUSD(FEES.escrow)}</span>
-                    </div>
-                    <p className="text-gray-400 text-sm mt-1">
-                      Enable secure P2P trading with escrow protection. 
-                      Buyers and sellers can trade tokens safely with guaranteed settlement.
-                    </p>
-                  </div>
-                </label>
-
-                {/* Dividends Option */}
-                <label className="flex items-start gap-4 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-650 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={formData.withDividends}
-                    onChange={e => setFormData(prev => ({ ...prev, withDividends: e.target.checked }))}
-                    className="mt-1 w-5 h-5 rounded border-gray-500 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-white font-medium flex items-center gap-2">
-                        <TrendingUp className="w-4 h-4 text-yellow-400" />
-                        Dividend Distributor
-                      </span>
-                      <span className="text-green-400 text-sm font-medium">+{formatUSD(FEES.dividend)}</span>
-                    </div>
-                    <p className="text-gray-400 text-sm mt-1">
-                      Automatically distribute revenue or dividends to all token holders 
-                      proportionally based on their holdings.
-                    </p>
-                  </div>
-                </label>
-              </div>
-
-              {/* Fee Summary */}
-              <div className="bg-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-green-400" />
-                  Fee Summary
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between text-gray-300">
-                    <span>Base Fee (Project NFT + ERC3643 Token)</span>
-                    <span>{formatUSD(FEES.base)}</span>
-                  </div>
-                  
-                  {formData.withEscrow && (
-                    <div className="flex justify-between text-gray-300">
-                      <span>Trade Escrow</span>
-                      <span>{formatUSD(FEES.escrow)}</span>
-                    </div>
-                  )}
-                  
-                  {formData.withDividends && (
-                    <div className="flex justify-between text-gray-300">
-                      <span>Dividend Distributor</span>
-                      <span>{formatUSD(FEES.dividend)}</span>
-                    </div>
-                  )}
-                  
-                  <div className="border-t border-gray-700 pt-3 flex justify-between text-white font-bold text-lg">
-                    <span>Total</span>
-                    <span>{formatUSD(totalFee)} USDC</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Navigation */}
-              <div className="flex justify-between">
-                <button
-                  onClick={() => setCurrentStep(1)}
-                  className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => setCurrentStep(3)}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-                >
-                  Review & Deploy <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Review & Deploy */}
+          {/* Step 3: Options */}
           {currentStep === 3 && (
             <div className="space-y-6">
-              {/* Summary */}
-              <div className="bg-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-400" />
-                  Deployment Summary
-                </h3>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-gray-400 text-sm">Token Name</p>
-                      <p className="text-white font-medium">{formData.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 text-sm">Symbol</p>
-                      <p className="text-white font-medium">{formData.symbol}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 text-sm">Category</p>
-                      <p className="text-white font-medium capitalize">
-                        {formData.category.replace('_', ' ')}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-gray-400 text-sm">Total Supply</p>
-                      <p className="text-white font-medium">
-                        {Number(formData.tokenSupply).toLocaleString()} tokens
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 text-sm">Trade Escrow</p>
-                      <p className={`font-medium ${formData.withEscrow ? 'text-green-400' : 'text-gray-500'}`}>
-                        {formData.withEscrow ? 'Included' : 'Not included'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 text-sm">Dividends</p>
-                      <p className={`font-medium ${formData.withDividends ? 'text-green-400' : 'text-gray-500'}`}>
-                        {formData.withDividends ? 'Included' : 'Not included'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* What You Get */}
-              <div className="bg-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">What You'll Receive</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-gray-700 rounded-lg p-4">
-                    <ImageIcon className="w-6 h-6 text-purple-400 mb-2" />
-                    <p className="text-white font-medium">Project NFT</p>
-                    <p className="text-gray-400 text-sm">RWAProjectNFT representing your asset</p>
-                  </div>
-                  <div className="bg-gray-700 rounded-lg p-4">
-                    <Coins className="w-6 h-6 text-blue-400 mb-2" />
-                    <p className="text-white font-medium">{formData.symbol} Tokens</p>
-                    <p className="text-gray-400 text-sm">
-                      {Number(formData.tokenSupply).toLocaleString()} ERC3643 tokens
-                    </p>
-                  </div>
-                  {formData.withEscrow && (
-                    <div className="bg-gray-700 rounded-lg p-4">
-                      <Lock className="w-6 h-6 text-green-400 mb-2" />
-                      <p className="text-white font-medium">Escrow Vault</p>
-                      <p className="text-gray-400 text-sm">Secure P2P trading</p>
-                    </div>
-                  )}
-                  {formData.withDividends && (
-                    <div className="bg-gray-700 rounded-lg p-4">
-                      <TrendingUp className="w-6 h-6 text-yellow-400 mb-2" />
-                      <p className="text-white font-medium">Dividend Distributor</p>
-                      <p className="text-gray-400 text-sm">Revenue distribution</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Fee & Balance */}
-              <div className="bg-gray-800 rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-white mb-4">Deployment Options</h2>
+              
+              <div className="space-y-4">
+                <label className="flex items-start gap-4 p-4 bg-gray-900 rounded-lg cursor-pointer hover:bg-gray-900/50 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formData.useEscrow}
+                    onChange={(e) => handleInputChange('useEscrow', e.target.checked)}
+                    className="mt-1 w-5 h-5 rounded border-gray-600 text-purple-600 focus:ring-purple-500"
+                  />
                   <div>
-                    <p className="text-white font-medium">Total Fee</p>
-                    <p className="text-gray-400 text-sm">
-                      Your balance: {usdcBalance ? formatUnits(usdcBalance, 6) : '0'} USDC
+                    <p className="text-white font-medium">Enable Escrow</p>
+                    <p className="text-gray-400 text-sm mt-1">
+                      Deploy with an escrow contract for milestone-based fund release. 
+                      Additional fee: ${formatUnits(contractFees.escrowFee, 6)} USDC
                     </p>
                   </div>
-                  <p className="text-2xl font-bold text-white">{formatUSD(totalFee)} USDC</p>
-                </div>
+                </label>
                 
-                {usdcBalance && usdcBalance < totalFeeWei && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                    <p className="text-red-400 text-sm flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
-                      Insufficient USDC balance. Please deposit more USDC to continue.
-                    </p>
+                {formData.useEscrow && (
+                  <div className="ml-9 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-gray-400 mb-2">Funding Goal (USDC) *</label>
+                      <input
+                        type="number"
+                        value={formData.fundingGoal}
+                        onChange={(e) => handleInputChange('fundingGoal', e.target.value)}
+                        placeholder="100000"
+                        min="1000"
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-400 mb-2">Funding Deadline *</label>
+                      <input
+                        type="date"
+                        value={formData.fundingDeadline}
+                        onChange={(e) => handleInputChange('fundingDeadline', e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
                   </div>
                 )}
-
-                {isApproved === false && (
-                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg mt-3">
-                    <p className="text-yellow-400 text-sm flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
-                      Your wallet is not approved for deployment. Please contact admin.
+                
+                <label className="flex items-start gap-4 p-4 bg-gray-900 rounded-lg cursor-pointer hover:bg-gray-900/50 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formData.addDividends}
+                    onChange={(e) => handleInputChange('addDividends', e.target.checked)}
+                    className="mt-1 w-5 h-5 rounded border-gray-600 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div>
+                    <p className="text-white font-medium">Add Dividend Module</p>
+                    <p className="text-gray-400 text-sm mt-1">
+                      Enable dividend distribution to token holders. 
+                      Additional fee: ${formatUnits(contractFees.dividendFee, 6)} USDC
                     </p>
                   </div>
-                )}
-              </div>
-
-              {/* Navigation */}
-              <div className="flex justify-between">
-                <button
-                  onClick={() => setCurrentStep(2)}
-                  className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleDeploy}
-                  disabled={
-                    isDeploying || 
-                    isApproved === false || 
-                    (usdcBalance !== undefined && usdcBalance < totalFeeWei)
-                  }
-                  className="px-8 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-                >
-                  {isApproving ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Approving USDC...
-                    </>
-                  ) : isUploadingMetadata ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Uploading Metadata...
-                    </>
-                  ) : isDeploying ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Deploying...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5" />
-                      Deploy Asset
-                    </>
-                  )}
-                </button>
+                </label>
               </div>
             </div>
           )}
+
+          {/* Step 4: Review & Deploy */}
+          {currentStep === 4 && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold text-white mb-4">Review & Deploy</h2>
+              
+              {/* Summary */}
+              <div className="bg-gray-900 rounded-xl p-6 space-y-4">
+                <h3 className="text-lg font-medium text-white">Token Summary</h3>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-400">Name</p>
+                    <p className="text-white">{formData.tokenName || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Symbol</p>
+                    <p className="text-white">{formData.tokenSymbol || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Total Supply</p>
+                    <p className="text-white">{Number(formData.totalSupply).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Price per Token</p>
+                    <p className="text-white">${formData.pricePerToken} USDC</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Network</p>
+                    <p className="text-white flex items-center gap-2">
+                      {chainName}
+                      {isTestnet && (
+                        <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
+                          Testnet
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Features</p>
+                    <p className="text-white">
+                      {formData.useEscrow ? 'Escrow' : ''}
+                      {formData.useEscrow && formData.addDividends ? ', ' : ''}
+                      {formData.addDividends ? 'Dividends' : ''}
+                      {!formData.useEscrow && !formData.addDividends ? 'Standard' : ''}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Fee Summary */}
+              <div className="bg-gray-900 rounded-xl p-6">
+                <h3 className="text-lg font-medium text-white mb-4">Fees</h3>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Base Deployment Fee</span>
+                    <span className="text-white">${formatUnits(contractFees.bundleFee, 6)} USDC</span>
+                  </div>
+                  
+                  {formData.useEscrow && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Escrow Fee</span>
+                      <span className="text-white">${formatUnits(contractFees.escrowFee, 6)} USDC</span>
+                    </div>
+                  )}
+                  
+                  {formData.addDividends && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Dividend Module Fee</span>
+                      <span className="text-white">${formatUnits(contractFees.dividendFee, 6)} USDC</span>
+                    </div>
+                  )}
+                  
+                  <div className="pt-3 border-t border-gray-700 flex justify-between">
+                    <span className="text-white font-medium">Total</span>
+                    <span className="text-white font-medium">${formattedTotalFee} USDC</span>
+                  </div>
+                </div>
+                
+                {/* Balance Info */}
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Your USDC Balance</span>
+                    <span className={hasInsufficientBalance ? 'text-red-400' : 'text-green-400'}>
+                      ${formatUnits(usdcBalance, 6)} USDC
+                    </span>
+                  </div>
+                  
+                  {hasInsufficientBalance && (
+                    <div className="mt-2 bg-red-500/20 border border-red-500 rounded-lg p-3">
+                      <p className="text-red-400 text-sm flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        Insufficient USDC balance. You need at least ${formattedTotalFee} USDC.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Transaction Status */}
+              {(isDeploying || deploymentStatus !== 'idle') && (
+                <div className="bg-gray-900 rounded-xl p-6">
+                  <h3 className="text-lg font-medium text-white mb-4">Deployment Progress</h3>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      {deploymentStatus === 'uploading' ? (
+                        <Loader2 className="h-5 w-5 text-purple-500 animate-spin" />
+                      ) : deploymentStatus !== 'idle' ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <div className="h-5 w-5 rounded-full border-2 border-gray-600" />
+                      )}
+                      <span className={deploymentStatus === 'uploading' ? 'text-white' : 'text-gray-400'}>
+                        Uploading metadata to IPFS
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      {deploymentStatus === 'approving' ? (
+                        <Loader2 className="h-5 w-5 text-purple-500 animate-spin" />
+                      ) : ['deploying', 'success'].includes(deploymentStatus) ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <div className="h-5 w-5 rounded-full border-2 border-gray-600" />
+                      )}
+                      <span className={deploymentStatus === 'approving' ? 'text-white' : 'text-gray-400'}>
+                        Approving USDC transfer
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      {deploymentStatus === 'deploying' || isConfirming ? (
+                        <Loader2 className="h-5 w-5 text-purple-500 animate-spin" />
+                      ) : deploymentStatus === 'success' ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <div className="h-5 w-5 rounded-full border-2 border-gray-600" />
+                      )}
+                      <span className={deploymentStatus === 'deploying' ? 'text-white' : 'text-gray-400'}>
+                        Deploying contracts
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {txHash && (
+                    <div className="mt-4 pt-4 border-t border-gray-700">
+                      <a
+                        href={getTxUrl(txHash)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-400 hover:text-purple-300 flex items-center gap-2 text-sm"
+                      >
+                        View transaction on {chainName.includes('Avalanche') ? 'SnowTrace' : 'Explorer'}
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Navigation */}
+          <div className="flex justify-between mt-8 pt-6 border-t border-gray-700">
+            <button
+              onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))}
+              disabled={currentStep === 1 || isDeploying}
+              className="px-6 py-3 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 rounded-lg text-white font-medium transition-colors"
+            >
+              Previous
+            </button>
+            
+            {currentStep < 4 ? (
+              <button
+                onClick={() => setCurrentStep(prev => Math.min(4, prev + 1))}
+                disabled={!isStepValid(currentStep)}
+                className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:text-gray-400 rounded-lg text-white font-medium transition-colors"
+              >
+                Next
+              </button>
+            ) : needsApproval ? (
+              <button
+                onClick={handleApprove}
+                disabled={hasInsufficientBalance || isDeploying || !isStepValid(4)}
+                className="px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:text-gray-400 rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+              >
+                {isWritePending || isConfirming ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Approving...
+                  </>
+                ) : (
+                  <>
+                    Approve USDC
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleDeploy}
+                disabled={hasInsufficientBalance || isDeploying || !isStepValid(4)}
+                className="px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:text-gray-400 rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+              >
+                {isDeploying || isWritePending || isConfirming ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    {deploymentStatus === 'uploading' ? 'Uploading...' : 
+                     deploymentStatus === 'deploying' ? 'Deploying...' : 
+                     isConfirming ? 'Confirming...' : 'Processing...'}
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-5 w-5" />
+                    Deploy Token
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,272 +1,245 @@
-// src/components/create/StepDeploy.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt, usePublicClient, useChainId, useSwitchChain } from 'wagmi';
-import { injected } from 'wagmi/connectors';
-import { parseEventLogs } from 'viem';
-import { ProjectData } from '@/app/create/page';
-import { ZERO_ADDRESS, EXPLORER_URL, CONTRACTS, CHAIN_ID, FAUCET_URL } from '@/config/contracts';
+import React, { useEffect, useState, useCallback } from 'react';
+import { 
+  useAccount, 
+  useConnect, 
+  useDisconnect, 
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  usePublicClient
+} from 'wagmi';
+import { parseUnits, formatEther, decodeEventLog, type Hash, type Address } from 'viem';
+import type { ProjectData } from '@/types/project';
+import { ZERO_ADDRESS } from '@/config/contracts';
+import { useChainConfig } from '@/hooks/useChainConfig';
 import { RWALaunchpadFactoryABI, RWAProjectNFTABI } from '@/config/abis';
 
-interface Props {
-  data: ProjectData;
-  uploadedUrls?: {
-    logo?: string;
-    banner?: string;
-    pitchDeck?: string;
-    legalDocs: string[];
-  };
-  onBack: () => void;
-}
+
+type DeployStatus = 
+  | 'idle' 
+  | 'connecting' 
+  | 'uploading' 
+  | 'waitingWallet' 
+  | 'confirming' 
+  | 'verifying' 
+  | 'success' 
+  | 'error';
 
 interface DeployedContracts {
   projectId: bigint;
-  securityToken: string;
-  escrowVault: string;
-  compliance: string;
-  nftTokenId: bigint;
+  securityToken: Address;
+  escrowVault: Address;
+  compliance: Address;
+  nftTokenId?: bigint;
 }
 
-type DeployStatus = 'idle' | 'connecting' | 'uploading' | 'waitingWallet' | 'confirming' | 'verifying' | 'success' | 'error';
+interface StepDeployProps {
+  projectData: ProjectData;
+  onBack: () => void;
+  onSuccess?: (contracts: DeployedContracts) => void;
+}
 
-export function StepDeploy({ data, uploadedUrls, onBack }: Props) {
-  const { address, isConnected, isConnecting } = useAccount();
-  const { connect, isPending: isConnectPending, error: connectError } = useConnect();
+export function StepDeploy({ projectData, onBack, onSuccess }: StepDeployProps) {
+  const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
-  const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
   const publicClient = usePublicClient();
   
+  // Multichain config
+  const { 
+    chainId: currentChainId,
+    chainName,
+    contracts,
+    fees,
+    explorerUrl,
+    nativeCurrency,
+    isDeployed,
+    isTestnet,
+    switchToChain,
+    isSwitching,
+    deployedChains,
+    getTxUrl,
+    getAddressUrl
+  } = useChainConfig();
+
+  const { writeContractAsync } = useWriteContract();
+
   const [status, setStatus] = useState<DeployStatus>('idle');
   const [error, setError] = useState<string>('');
   const [metadataUri, setMetadataUri] = useState<string>('');
   const [deployedContracts, setDeployedContracts] = useState<DeployedContracts | null>(null);
-  const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
-  const [creationFee, setCreationFee] = useState<bigint>(0n);
-  const [verificationStatus, setVerificationStatus] = useState({
-    securityToken: 'pending' as 'pending' | 'success' | 'failed',
-    escrowVault: 'pending' as 'pending' | 'success' | 'failed',
-    compliance: 'pending' as 'pending' | 'success' | 'failed',
-  });
+  const [txHash, setTxHash] = useState<Hash | undefined>();
+  const [creationFee, setCreationFee] = useState<bigint>(BigInt(0));
+  const [verificationStatus, setVerificationStatus] = useState<Record<string, 'pending' | 'success' | 'failed'>>({});
 
-  const { 
-    writeContractAsync,
-    error: writeError, 
-    isPending: isWritePending,
-    reset: resetWrite 
-  } = useWriteContract();
-
-  const { 
-    isLoading: isConfirming, 
-    isSuccess, 
-    isError: isReceiptError,
-    error: receiptError,
-    data: receipt 
-  } = useWaitForTransactionReceipt({
+  // Watch for transaction receipt
+  const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({
     hash: txHash,
-    confirmations: 1,
   });
 
-  // Check if on correct network
-  const isWrongNetwork = isConnected && chainId !== CHAIN_ID;
-
-  // Fetch creation fee on mount
+  // Fetch creation fee when chain changes
   useEffect(() => {
-    const fetchCreationFee = async () => {
-      if (!publicClient || !CONTRACTS.RWALaunchpadFactory) return;
+    async function fetchCreationFee() {
+      if (!publicClient || !contracts?.RWALaunchpadFactory || !isDeployed) return;
+      
       try {
         const fee = await publicClient.readContract({
-          address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
+          address: contracts.RWALaunchpadFactory as Address,
           abi: RWALaunchpadFactoryABI,
           functionName: 'creationFee',
-        });
-        setCreationFee(fee as bigint);
+        }) as bigint;
+        setCreationFee(fee);
       } catch (err) {
         console.error('Failed to fetch creation fee:', err);
+        // Fallback to config fees if available
+        if (fees?.CREATION_FEE) {
+          setCreationFee(BigInt(fees.CREATION_FEE));
+        }
       }
-    };
+    }
+    
     fetchCreationFee();
-  }, [publicClient]);
+  }, [publicClient, contracts, fees, isDeployed, currentChainId]);
 
-  // Handle connection errors
+  // Handle transaction receipt
   useEffect(() => {
-    if (connectError) {
-      console.error('Connection error:', connectError);
-      setError(`Connection failed: ${connectError.message}`);
-      setStatus('error');
+    if (receipt && status === 'confirming') {
+      parseDeploymentEvents(receipt);
     }
-  }, [connectError]);
+  }, [receipt, status]);
 
-  // Handle write errors
-  useEffect(() => {
-    if (writeError) {
-      console.error('Write error:', writeError);
-      setError(extractErrorMessage(writeError));
-      setStatus('error');
-    }
-  }, [writeError]);
-
-  // Handle receipt errors
-  useEffect(() => {
-    if (isReceiptError && receiptError) {
-      console.error('Receipt error:', receiptError);
-      setError(extractErrorMessage(receiptError));
-      setStatus('error');
-    }
-  }, [isReceiptError, receiptError]);
-
-  // Update status when confirming
-  useEffect(() => {
-    if (isConfirming && txHash) {
-      setStatus('confirming');
-    }
-  }, [isConfirming, txHash]);
-
-  // Handle successful transaction
-  useEffect(() => {
-    if (isSuccess && receipt) {
-      console.log('Transaction confirmed:', receipt);
-      parseDeploymentEvents();
-    }
-  }, [isSuccess, receipt]);
-
-  const extractErrorMessage = (error: any): string => {
-    if (!error) return 'Unknown error';
-    
-    if (error.message?.includes('User rejected') || error.message?.includes('user rejected')) {
-      return 'Transaction rejected by user';
-    }
-    
-    if (error.message?.includes('execution reverted')) {
-      const match = error.message.match(/reason="([^"]+)"/);
-      if (match) return match[1];
-      return 'Contract execution failed. Please check parameters.';
-    }
-
-    if (error.message?.includes('InsufficientFee')) {
-      return `Insufficient fee. Required: ${creationFee > 0n ? (Number(creationFee) / 1e18).toFixed(4) : '0'} POL`;
-    }
-
-    if (error.message?.includes('InvalidDeadline')) {
-      return 'Invalid deadline. Must be at least minimum required days.';
-    }
-
-    if (error.message?.includes('InvalidFee')) {
-      return 'Invalid funding goal. Must meet minimum requirement.';
-    }
-
-    if (error.shortMessage) return error.shortMessage;
-    if (error.cause?.message) return error.cause.message;
-    
-    return error.message || 'Transaction failed';
-  };
-
-  const parseDeploymentEvents = async () => {
-    if (!receipt) return;
+  const parseDeploymentEvents = async (txReceipt: typeof receipt) => {
+    if (!txReceipt || !contracts) return;
 
     try {
-      console.log('Parsing', receipt.logs.length, 'logs');
+      setStatus('verifying');
+      
+      let deployedData: DeployedContracts | null = null;
 
       // Parse ProjectDeployed event from factory
-      const factoryLogs = parseEventLogs({
-        abi: RWALaunchpadFactoryABI,
-        logs: receipt.logs.filter(log => 
-          log.address.toLowerCase() === CONTRACTS.RWALaunchpadFactory?.toLowerCase()
-        ),
-        eventName: 'ProjectDeployed',
-      });
+      for (const log of txReceipt.logs) {
+        try {
+          if (log.address.toLowerCase() === contracts.RWALaunchpadFactory?.toLowerCase()) {
+            const decoded = decodeEventLog({
+              abi: RWALaunchpadFactoryABI,
+              data: log.data,
+              topics: log.topics,
+            });
+            
+            if (decoded.eventName === 'ProjectDeployed') {
+              const args = decoded.args as {
+                projectId: bigint;
+                securityToken: Address;
+                escrowVault: Address;
+                compliance: Address;
+                deployer: Address;
+              };
+              
+              deployedData = {
+                projectId: args.projectId,
+                securityToken: args.securityToken,
+                escrowVault: args.escrowVault,
+                compliance: args.compliance,
+              };
+            }
+          }
+        } catch {
+          // Not the event we're looking for
+        }
+      }
 
-      // Parse NFT Transfer event (mint)
-      const nftLogs = parseEventLogs({
-        abi: RWAProjectNFTABI,
-        logs: receipt.logs.filter(log => 
-          log.address.toLowerCase() === CONTRACTS.RWAProjectNFT?.toLowerCase()
-        ),
-        eventName: 'Transfer',
-      });
+      // Parse NFT Transfer event
+      for (const log of txReceipt.logs) {
+        try {
+          if (log.address.toLowerCase() === contracts.RWAProjectNFT?.toLowerCase()) {
+            const decoded = decodeEventLog({
+              abi: RWAProjectNFTABI,
+              data: log.data,
+              topics: log.topics,
+            });
+            
+            if (decoded.eventName === 'Transfer' && deployedData) {
+              const args = decoded.args as { tokenId: bigint };
+              deployedData.nftTokenId = args.tokenId;
+            }
+          }
+        } catch {
+          // Not the event we're looking for
+        }
+      }
 
-      if (factoryLogs.length > 0) {
-        const event = factoryLogs[0];
-        
-        // Find NFT mint event (from zero address)
-        const nftMint = nftLogs.find(log => 
-          log.args.from?.toLowerCase() === ZERO_ADDRESS.toLowerCase()
-        );
-
-        const contracts: DeployedContracts = {
-          projectId: event.args.projectId,
-          securityToken: event.args.securityToken,
-          escrowVault: event.args.escrowVault,
-          compliance: event.args.compliance,
-          nftTokenId: nftMint?.args.tokenId || event.args.projectId,
-        };
-
-        console.log('Deployed contracts:', contracts);
-        setDeployedContracts(contracts);
-        
-        setStatus('verifying');
-        await verifyContracts(contracts);
+      if (deployedData) {
+        setDeployedContracts(deployedData);
+        await verifyContracts(deployedData);
         setStatus('success');
+        onSuccess?.(deployedData);
       } else {
-        console.warn('No ProjectDeployed event found in logs');
-        // Still mark as success since tx confirmed
-        setStatus('success');
+        throw new Error('Failed to parse deployment events');
       }
     } catch (err) {
-      console.error('Error parsing events:', err);
-      // Still mark as success since tx confirmed
-      setStatus('success');
-    }
-  };
-
-  const verifyContracts = async (contracts: DeployedContracts) => {
-    const verify = async (addr: string, type: 'securityToken' | 'escrowVault' | 'compliance') => {
-      try {
-        const res = await fetch('/api/verify-contract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            address: addr, 
-            contractType: type, 
-            projectId: contracts.projectId.toString() 
-          }),
-        });
-        const result = await res.json();
-        setVerificationStatus(prev => ({ 
-          ...prev, 
-          [type]: result.success ? 'success' : 'failed' 
-        }));
-      } catch {
-        setVerificationStatus(prev => ({ ...prev, [type]: 'failed' }));
-      }
-    };
-
-    await Promise.allSettled([
-      verify(contracts.securityToken, 'securityToken'),
-      verify(contracts.escrowVault, 'escrowVault'),
-      verify(contracts.compliance, 'compliance'),
-    ]);
-  };
-
-  const handleConnect = async () => {
-    try {
-      setStatus('connecting');
-      setError('');
-      connect({ connector: injected() });
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect');
+      console.error('Failed to parse deployment events:', err);
+      setError('Deployment succeeded but failed to parse events. Check the transaction on the explorer.');
       setStatus('error');
     }
   };
 
-  const handleSwitchNetwork = async () => {
-    try {
-      switchChain({ chainId: CHAIN_ID });
-    } catch (err: any) {
-      setError(`Failed to switch network: ${err.message}`);
+  const verifyContracts = async (deployed: DeployedContracts) => {
+    const contractsToVerify = [
+      { name: 'securityToken', address: deployed.securityToken },
+      { name: 'escrowVault', address: deployed.escrowVault },
+      { name: 'compliance', address: deployed.compliance },
+    ];
+
+    for (const contract of contractsToVerify) {
+      setVerificationStatus(prev => ({ ...prev, [contract.name]: 'pending' }));
+      
+      try {
+        const response = await fetch('/api/verify-contract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: contract.address,
+            chainId: currentChainId,
+          }),
+        });
+
+        if (response.ok) {
+          setVerificationStatus(prev => ({ ...prev, [contract.name]: 'success' }));
+        } else {
+          setVerificationStatus(prev => ({ ...prev, [contract.name]: 'failed' }));
+        }
+      } catch {
+        setVerificationStatus(prev => ({ ...prev, [contract.name]: 'failed' }));
+      }
     }
   };
+
+  const handleConnect = useCallback(() => {
+    setStatus('connecting');
+    const injected = connectors.find(c => c.id === 'injected' || c.id === 'metaMask');
+    if (injected) {
+      connect(
+        { connector: injected },
+        {
+          onSuccess: () => setStatus('idle'),
+          onError: (err) => {
+            setError(err.message);
+            setStatus('error');
+          },
+        }
+      );
+    }
+  }, [connect, connectors]);
+
+  const handleSwitchNetwork = useCallback(async (targetChainId: number) => {
+    try {
+      await switchToChain(targetChainId);
+    } catch (err) {
+      console.error('Failed to switch network:', err);
+      setError('Failed to switch network. Please switch manually in your wallet.');
+    }
+  }, [switchToChain]);
 
   const handleDeploy = async () => {
     if (!isConnected || !address) {
@@ -274,71 +247,42 @@ export function StepDeploy({ data, uploadedUrls, onBack }: Props) {
       return;
     }
 
-    if (isWrongNetwork) {
-      handleSwitchNetwork();
-      return;
-    }
-
-    if (!CONTRACTS.RWALaunchpadFactory) {
-      setError('RWALaunchpadFactory contract not configured');
+    if (!isDeployed || !contracts) {
+      setError(`Contracts are not deployed on ${chainName}. Please switch to a supported network.`);
       setStatus('error');
       return;
     }
 
     try {
-      setError('');
-      resetWrite();
-      setTxHash(undefined);
       setStatus('uploading');
+      setError('');
 
-      // Create metadata object
+      // Build metadata object
       const metadata = {
-        name: data.projectName,
-        description: data.description,
-        image: uploadedUrls?.banner || uploadedUrls?.logo || '',
-        external_url: data.website || '',
-        attributes: {
-          category: data.category,
-          projected_roi: data.projectedROI,
-          company_name: data.companyName,
-          jurisdiction: data.jurisdiction,
-        },
+        name: projectData.projectName,
+        description: projectData.description,
+        image: projectData.coverImage || '',
+        external_url: projectData.website || '',
+        attributes: [
+          { trait_type: 'Category', value: projectData.category },
+          { trait_type: 'Token Symbol', value: projectData.tokenSymbol },
+          { trait_type: 'Total Supply', value: projectData.totalSupply?.toString() },
+          { trait_type: 'Funding Goal', value: projectData.amountToRaise?.toString() },
+          { trait_type: 'Location', value: projectData.location || 'Global' },
+        ],
         properties: {
-          funding_goal: data.amountToRaise,
-          token_name: data.tokenName,
-          token_symbol: data.tokenSymbol,
-          total_supply: data.totalSupply,
-          roi_timeline_months: data.roiTimelineMonths,
-          revenue_model: data.revenueModel,
-          investor_share_percent: data.investorSharePercent,
+          tokenName: projectData.tokenName,
+          tokenSymbol: projectData.tokenSymbol,
+          category: projectData.category,
+          totalSupply: projectData.totalSupply,
+          fundingGoal: projectData.amountToRaise,
+          documents: projectData.documents || [],
+          images: projectData.images || [],
+          milestones: projectData.milestones || [],
         },
-        documents: [] as Array<{ name: string; url: string; type: string }>,
       };
 
-      // Add uploaded documents
-      if (uploadedUrls?.logo) {
-        metadata.image = uploadedUrls.logo;
-      }
-      if (uploadedUrls?.pitchDeck) {
-        metadata.documents.push({
-          name: 'Pitch Deck',
-          url: uploadedUrls.pitchDeck,
-          type: 'PDF',
-        });
-      }
-      if (uploadedUrls?.legalDocs && uploadedUrls.legalDocs.length > 0) {
-        uploadedUrls.legalDocs.forEach((url, index) => {
-          metadata.documents.push({
-            name: `Legal Document ${index + 1}`,
-            url: url,
-            type: 'PDF',
-          });
-        });
-      }
-
-      console.log('Uploading metadata to IPFS:', metadata);
-
-      // Upload metadata to IPFS
+      // Upload to IPFS
       const ipfsResponse = await fetch('/api/ipfs/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,118 +290,53 @@ export function StepDeploy({ data, uploadedUrls, onBack }: Props) {
       });
 
       if (!ipfsResponse.ok) {
-        const ipfsError = await ipfsResponse.json();
-        throw new Error(ipfsError.error || 'Failed to upload metadata to IPFS');
+        throw new Error('Failed to upload metadata to IPFS');
       }
 
-      const ipfsResult = await ipfsResponse.json();
-      const uri = ipfsResult.ipfsUri;
+      const { uri } = await ipfsResponse.json();
       setMetadataUri(uri);
-      console.log('Metadata uploaded to IPFS:', uri);
 
       setStatus('waitingWallet');
 
       // Prepare deployment parameters
-      const maxSupply = BigInt(data.totalSupply) * BigInt(10 ** 18);
-      const fundingGoal = BigInt(data.amountToRaise);
-      const deadlineDays = BigInt(30); // 30 days default
+      const tokenName = projectData.tokenName || projectData.projectName;
+      const tokenSymbol = projectData.tokenSymbol || 'RWA';
+      const category = projectData.category || 'real-estate';
+      const maxSupply = parseUnits(projectData.totalSupply?.toString() || '1000000', 18);
+      const fundingGoal = parseUnits(projectData.amountToRaise?.toString() || '100000', 6); // USDC decimals
+      const deadlineDays = 30;
 
-      console.log('Deploying project with params:', {
-        name: data.tokenName,
-        symbol: data.tokenSymbol,
-        category: data.category,
-        maxSupply: maxSupply.toString(),
-        fundingGoal: fundingGoal.toString(),
-        deadlineDays: deadlineDays.toString(),
-        metadataUri: uri,
-        creationFee: creationFee.toString(),
-      });
-
-console.log('=== PRE-DEPLOY DIAGNOSTICS ===');
-const factoryAddress = CONTRACTS.RWALaunchpadFactory as `0x${string}`;
-
-// Check contract has code
-const code = await publicClient!.getBytecode({ address: factoryAddress });
-console.log('Contract has code:', !!code && code !== '0x');
-
-// Read the ERC1967 implementation slot directly
-const implementationSlot = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
-const implStorage = await publicClient!.getStorageAt({
-  address: factoryAddress,
-  slot: implementationSlot as `0x${string}`,
-});
-console.log('Implementation address from storage:', implStorage);
-
-// Try basic reads one by one
-try {
-  const owner = await publicClient!.readContract({
-    address: factoryAddress,
-    abi: [{ inputs: [], name: "owner", outputs: [{ type: "address" }], stateMutability: "view", type: "function" }],
-    functionName: 'owner',
-  });
-  console.log('Owner:', owner);
-} catch (e: any) {
-  console.error('owner() failed:', e.message);
-}
-
-try {
-  const fee = await publicClient!.readContract({
-    address: factoryAddress,
-    abi: [{ inputs: [], name: "creationFee", outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" }],
-    functionName: 'creationFee',
-  });
-  console.log('Creation fee:', fee);
-} catch (e: any) {
-  console.error('creationFee() failed:', e.message);
-}
-
-try {
-  const paused = await publicClient!.readContract({
-    address: factoryAddress,
-    abi: [{ inputs: [], name: "paused", outputs: [{ type: "bool" }], stateMutability: "view", type: "function" }],
-    functionName: 'paused',
-  });
-  console.log('Paused:', paused);
-} catch (e: any) {
-  console.error('paused() failed:', e.message);
-}
-
-try {
-  const requireApproval = await publicClient!.readContract({
-    address: factoryAddress,
-    abi: [{ inputs: [], name: "requireApproval", outputs: [{ type: "bool" }], stateMutability: "view", type: "function" }],
-    functionName: 'requireApproval',
-  });
-  console.log('Require approval:', requireApproval);
-} catch (e: any) {
-  console.error('requireApproval() failed:', e.message);
-}
-
-      // Call deployProject on factory
+      // Execute deployment
       const hash = await writeContractAsync({
-        address: CONTRACTS.RWALaunchpadFactory as `0x${string}`,
+        address: contracts.RWALaunchpadFactory as Address,
         abi: RWALaunchpadFactoryABI,
-        functionName: 'deployProject',
+        functionName: 'createProject',
         args: [
-          data.tokenName,           // _name
-          data.tokenSymbol,         // _symbol
-          ZERO_ADDRESS,             // unused address param
-          data.category,            // _category
-          maxSupply,                // _maxSupply
-          fundingGoal,              // _fundingGoal
-          deadlineDays,             // _deadlineDays
-          uri,                      // _metadataUri
+          tokenName,
+          tokenSymbol,
+          ZERO_ADDRESS as Address, // issuer (will be set to deployer)
+          category,
+          maxSupply,
+          fundingGoal,
+          BigInt(deadlineDays),
+          uri,
         ],
         value: creationFee,
       });
 
-      console.log('Transaction submitted:', hash);
       setTxHash(hash);
       setStatus('confirming');
-
-    } catch (err: any) {
-      console.error('Deploy error:', err);
-      setError(extractErrorMessage(err));
+    } catch (err: unknown) {
+      console.error('Deployment failed:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      
+      if (errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
+        setError('Transaction was rejected. Please try again.');
+      } else if (errorMessage.includes('insufficient funds')) {
+        setError(`Insufficient ${nativeCurrency} balance. Please add funds to your wallet.`);
+      } else {
+        setError(errorMessage);
+      }
       setStatus('error');
     }
   };
@@ -467,327 +346,505 @@ try {
     setError('');
     setTxHash(undefined);
     setDeployedContracts(null);
-    setVerificationStatus({
-      securityToken: 'pending',
-      escrowVault: 'pending',
-      compliance: 'pending',
-    });
-    resetWrite();
+    setMetadataUri('');
+    setVerificationStatus({});
   };
 
-  // Loading states
-  const isLoading = isConnecting || isConnectPending || status === 'connecting';
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">Deploy Your Project</h2>
-        <p className="text-gray-400">Deploy your ERC-3643 Security Token on Avalanche Fuji</p>
-      </div>
-
-      {/* Not Connected */}
-      {!isConnected && (
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-6 text-center">
-          <p className="text-yellow-400 mb-4">Connect your wallet to deploy</p>
+  // Render: Not connected
+  if (!isConnected) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
+          <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold mb-2 dark:text-white">Connect Your Wallet</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Connect your wallet to deploy your RWA project on the blockchain.
+          </p>
           <button
             onClick={handleConnect}
-            disabled={isLoading}
-            className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 text-black font-medium rounded-lg"
+            disabled={status === 'connecting'}
+            className="px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
-            {isLoading ? 'Connecting...' : 'Connect Wallet'}
-          </button>
-          <p className="text-gray-500 text-sm mt-4">
-            Need testnet AVAX?{' '}
-            <a href={FAUCET_URL} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
-              Get from faucet
-            </a>
-          </p>
-        </div>
-      )}
-
-      {/* Wrong Network */}
-      {isConnected && isWrongNetwork && (
-        <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-6 text-center">
-          <p className="text-orange-400 mb-4">Please switch to Avalanche Fuji network</p>
-          <button
-            onClick={handleSwitchNetwork}
-            className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-black font-medium rounded-lg"
-          >
-            Switch Network
+            {status === 'connecting' ? 'Connecting...' : 'Connect Wallet'}
           </button>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Connected & Correct Network */}
-      {isConnected && !isWrongNetwork && (
-        <>
-          {/* Summary */}
-          <div className="bg-gray-800/50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Deployment Summary</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><span className="text-gray-400">Project:</span> <span className="text-white">{data.projectName}</span></div>
-              <div><span className="text-gray-400">Token:</span> <span className="text-white">{data.tokenName} ({data.tokenSymbol})</span></div>
-              <div><span className="text-gray-400">Category:</span> <span className="text-white">{data.category}</span></div>
-              <div><span className="text-gray-400">Supply:</span> <span className="text-white">{data.totalSupply?.toLocaleString()} tokens</span></div>
-              <div><span className="text-gray-400">Goal:</span> <span className="text-white">${data.amountToRaise?.toLocaleString()}</span></div>
-              <div><span className="text-gray-400">Deadline:</span> <span className="text-white">30 days</span></div>
-              <div><span className="text-gray-400">Wallet:</span> <span className="text-white font-mono text-xs">{address?.slice(0, 6)}...{address?.slice(-4)}</span></div>
-              <div><span className="text-gray-400">Network:</span> <span className="text-green-400">Avalanche Fuji ✓</span></div>
-            </div>
-            {creationFee > 0n && (
-              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                <span className="text-yellow-400 text-sm">
-                  Creation Fee: {(Number(creationFee) / 1e18).toFixed(4)} POL
-                </span>
-              </div>
+  // Render: Wrong network or not deployed
+  if (!isDeployed) {
+    const firstDeployedChain = deployedChains[0];
+    
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-8 text-center">
+          <div className="w-16 h-16 bg-yellow-100 dark:bg-yellow-900 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold mb-2 text-yellow-800 dark:text-yellow-200">
+            Network Not Supported
+          </h2>
+          <p className="text-yellow-700 dark:text-yellow-300 mb-6">
+            {chainName ? (
+              <>Contracts are not yet deployed on <strong>{chainName}</strong>.</>
+            ) : (
+              <>Please connect to a supported network.</>
             )}
-          </div>
+          </p>
+          
+          {firstDeployedChain && (
+            <button
+              onClick={() => handleSwitchNetwork(firstDeployedChain.id)}
+              disabled={isSwitching}
+              className="px-6 py-3 bg-yellow-600 text-white rounded-lg font-semibold hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+            >
+              {isSwitching ? 'Switching...' : `Switch to ${firstDeployedChain.name}`}
+            </button>
+          )}
 
-          {/* What will be deployed */}
-          <div className="bg-gray-800/50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Contracts to be Deployed</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">●</span>
-                <span className="text-gray-300">Security Token (ERC-3643)</span>
-                <span className="text-gray-500">- Your tokenized asset</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">●</span>
-                <span className="text-gray-300">Escrow Vault</span>
-                <span className="text-gray-500">- Holds investor funds</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">●</span>
-                <span className="text-gray-300">Modular Compliance</span>
-                <span className="text-gray-500">- Regulatory controls</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">●</span>
-                <span className="text-gray-300">Dividend Distributor</span>
-                <span className="text-gray-500">- Revenue sharing</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">●</span>
-                <span className="text-gray-300">Max Balance Module</span>
-                <span className="text-gray-500">- Investment limits</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">●</span>
-                <span className="text-gray-300">Lockup Module</span>
-                <span className="text-gray-500">- Token vesting</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-blue-400">●</span>
-                <span className="text-gray-300">Project NFT</span>
-                <span className="text-gray-500">- Ownership proof (minted to you)</span>
+          {deployedChains.length > 1 && (
+            <div className="mt-4">
+              <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-2">Or choose another network:</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {deployedChains.slice(1).map((chain) => (
+                  <button
+                    key={chain.id}
+                    onClick={() => handleSwitchNetwork(chain.id)}
+                    disabled={isSwitching}
+                    className="px-4 py-2 bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 rounded-lg text-sm hover:bg-yellow-200 dark:hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+                  >
+                    {chain.name}
+                  </button>
+                ))}
               </div>
             </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Render: Success
+  if (status === 'success' && deployedContracts) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-green-600 mb-2">Deployment Successful!</h2>
+            <p className="text-gray-600 dark:text-gray-400">
+              Your RWA project has been deployed to {chainName}.
+            </p>
           </div>
 
-          {/* Progress */}
-          {['uploading', 'waitingWallet', 'confirming', 'verifying'].includes(status) && (
-            <div className="bg-gray-800/50 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Deployment Progress</h3>
-              <div className="space-y-3">
-                <Step label="Upload metadata to IPFS" done={status !== 'uploading'} active={status === 'uploading'} />
-                <Step label="Confirm in wallet" done={['confirming', 'verifying', 'success'].includes(status)} active={status === 'waitingWallet'} />
-                <Step label="Deploy contracts on-chain" done={['verifying', 'success'].includes(status)} active={status === 'confirming'} />
-                <Step label="Verify on SnowTrace" done={status === 'success'} active={status === 'verifying'} />
+          {/* NFT Token ID */}
+          {deployedContracts.nftTokenId !== undefined && (
+            <div className="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-6">
+              <p className="text-sm text-primary-600 dark:text-primary-400 mb-1">Project NFT Token ID</p>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold text-primary-700 dark:text-primary-300">
+                  #{deployedContracts.nftTokenId.toString()}
+                </span>
+                <a
+                  href={`${explorerUrl}/token/${contracts?.RWAProjectNFT}?a=${deployedContracts.nftTokenId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-600 hover:text-primary-700 text-sm"
+                >
+                  View on Explorer →
+                </a>
               </div>
-              {txHash && (
-                <div className="mt-4 p-3 bg-gray-900 rounded text-sm">
-                  <span className="text-gray-400">Tx: </span>
-                  <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline font-mono">
-                    {txHash.slice(0, 14)}...{txHash.slice(-10)}
-                  </a>
-                  {status === 'confirming' && (
-                    <span className="text-yellow-400 ml-2 animate-pulse">Waiting for confirmation...</span>
-                  )}
-                </div>
+            </div>
+          )}
+
+          {/* Deployed Contracts */}
+          <div className="space-y-3 mb-6">
+            <h3 className="font-semibold text-gray-900 dark:text-white">Deployed Contracts</h3>
+            
+            <ContractRow
+              label="Security Token"
+              address={deployedContracts.securityToken}
+              explorerUrl={explorerUrl}
+              verificationStatus={verificationStatus.securityToken}
+            />
+            <ContractRow
+              label="Escrow Vault"
+              address={deployedContracts.escrowVault}
+              explorerUrl={explorerUrl}
+              verificationStatus={verificationStatus.escrowVault}
+            />
+            <ContractRow
+              label="Compliance"
+              address={deployedContracts.compliance}
+              explorerUrl={explorerUrl}
+              verificationStatus={verificationStatus.compliance}
+            />
+          </div>
+
+          {/* Transaction Link */}
+          {txHash && (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Transaction Hash</p>
+              <a
+                href={getTxUrl(txHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-600 hover:text-primary-700 text-sm font-mono break-all"
+              >
+                {txHash}
+              </a>
+            </div>
+          )}
+
+          {/* Next Steps */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
+            <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Next Steps</h4>
+            <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+              <li>✓ Complete KYC verification to enable trading</li>
+              <li>✓ Configure escrow milestones for fund release</li>
+              <li>✓ Share your project with potential investors</li>
+              <li>✓ Monitor investment progress on the dashboard</li>
+            </ul>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-4">
+            <button
+              onClick={() => window.location.href = `/projects/${deployedContracts.projectId}`}
+              className="flex-1 px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors"
+            >
+              View Project
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              Create Another
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render: Error
+  if (status === 'error') {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-red-600 mb-2">Deployment Failed</h2>
+            <p className="text-gray-600 dark:text-gray-400">{error}</p>
+          </div>
+
+          <div className="flex gap-4">
+            <button
+              onClick={handleReset}
+              className="flex-1 px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={() => disconnect()}
+              className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render: Main deployment form
+  const canDeploy = 
+    projectData.tokenName && 
+    projectData.tokenSymbol && 
+    (projectData.amountToRaise || 0) >= 10000;
+
+  return (
+    <div className="max-w-2xl mx-auto p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
+        <h2 className="text-2xl font-bold mb-6 dark:text-white">Deploy Your Project</h2>
+
+        {/* Network Info */}
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Network</span>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-gray-900 dark:text-white">{chainName}</span>
+              {isTestnet && (
+                <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-xs rounded-full">
+                  Testnet
+                </span>
               )}
             </div>
-          )}
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Wallet</span>
+            <span className="font-mono text-sm text-gray-900 dark:text-white">
+              {address?.slice(0, 6)}...{address?.slice(-4)}
+            </span>
+          </div>
+        </div>
 
-          {/* Success */}
-          {status === 'success' && deployedContracts && (
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-6 space-y-6">
-              <div className="text-center">
-                <div className="text-4xl mb-2">🎉</div>
-                <h3 className="text-xl font-bold text-green-400">Project Deployed Successfully!</h3>
-                <p className="text-gray-400 mt-2">All contracts have been deployed and configured</p>
-              </div>
-
-              <div className="bg-gray-800/50 rounded-lg p-4">
-                <h4 className="text-white font-medium mb-3">🖼️ Your Project NFT</h4>
-                <p className="text-gray-400 text-sm">Token ID: <span className="text-white font-bold">#{deployedContracts.nftTokenId.toString()}</span></p>
-                <p className="text-gray-400 text-sm">Owner: <span className="text-white font-mono text-xs">{address}</span></p>
-                <a 
-                  href={`${EXPLORER_URL}/token/${CONTRACTS.RWAProjectNFT}?a=${deployedContracts.nftTokenId}`} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="text-purple-400 hover:underline text-sm mt-2 inline-block"
-                >
-                  View NFT on SnowTrace →
-                </a>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-white font-medium">Deployed Contracts</h4>
-                <ContractRow label="Security Token" address={deployedContracts.securityToken} status={verificationStatus.securityToken} />
-                <ContractRow label="Escrow Vault" address={deployedContracts.escrowVault} status={verificationStatus.escrowVault} />
-                <ContractRow label="Compliance" address={deployedContracts.compliance} status={verificationStatus.compliance} />
-              </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                <h4 className="text-blue-400 font-medium mb-2">📋 Next Steps</h4>
-                <ul className="text-sm text-gray-300 space-y-1">
-                  <li>• Configure country restrictions in compliance module</li>
-                  <li>• Set investment limits per investor tier</li>
-                  <li>• Add project milestones in escrow vault</li>
-                  <li>• Submit for platform review to activate fundraising</li>
-                </ul>
-              </div>
-
-              <div className="flex gap-4">
-                <a href={`/projects/${deployedContracts.nftTokenId}`} className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white text-center rounded-lg font-medium">
-                  View Project
-                </a>
-                <button onClick={handleReset} className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium">
-                  Create Another
-                </button>
-              </div>
+        {/* Deployment Summary */}
+        <div className="space-y-4 mb-6">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Deployment Summary</h3>
+          
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-gray-600 dark:text-gray-400">Project Name</p>
+              <p className="font-semibold dark:text-white">{projectData.projectName}</p>
             </div>
-          )}
-
-          {/* Success without parsed events */}
-          {status === 'success' && !deployedContracts && txHash && (
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-6 space-y-6">
-              <div className="text-center">
-                <div className="text-4xl mb-2">✅</div>
-                <h3 className="text-xl font-bold text-green-400">Transaction Confirmed!</h3>
-                <p className="text-gray-400 mt-2">Your project has been deployed successfully</p>
-              </div>
-
-              <div className="p-3 bg-gray-900 rounded text-sm">
-                <span className="text-gray-400">Transaction: </span>
-                <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline font-mono">
-                  {txHash}
-                </a>
-              </div>
-
-              <div className="flex gap-4">
-                <a href="/projects" className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white text-center rounded-lg font-medium">
-                  View All Projects
-                </a>
-                <button onClick={handleReset} className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium">
-                  Create Another
-                </button>
-              </div>
+            <div>
+              <p className="text-gray-600 dark:text-gray-400">Token</p>
+              <p className="font-semibold dark:text-white">{projectData.tokenName} ({projectData.tokenSymbol})</p>
             </div>
-          )}
-
-          {/* Error */}
-          {status === 'error' && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6">
-              <h3 className="text-red-400 font-medium mb-2">Deployment Failed</h3>
-              <p className="text-gray-300 text-sm mb-4 bg-gray-900 p-3 rounded font-mono overflow-auto max-h-24">{error}</p>
-              <div className="flex gap-3">
-                <button onClick={handleReset} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">
-                  Try Again
-                </button>
-                <button onClick={() => disconnect()} className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg">
-                  Disconnect Wallet
-                </button>
-              </div>
+            <div>
+              <p className="text-gray-600 dark:text-gray-400">Category</p>
+              <p className="font-semibold dark:text-white capitalize">{projectData.category}</p>
             </div>
-          )}
-
-          {/* Deploy Button */}
-          {status === 'idle' && (
-            <div className="flex gap-4">
-              <button onClick={onBack} className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium">
-                Back
-              </button>
-              <button 
-                onClick={handleDeploy} 
-                disabled={!data.tokenName || !data.tokenSymbol || data.amountToRaise < 10000}
-                className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium"
-              >
-                Deploy Project {creationFee > 0n ? `(${(Number(creationFee) / 1e18).toFixed(4)} POL)` : ''}
-              </button>
+            <div>
+              <p className="text-gray-600 dark:text-gray-400">Total Supply</p>
+              <p className="font-semibold dark:text-white">{projectData.totalSupply?.toLocaleString()}</p>
             </div>
-          )}
-        </>
-      )}
+            <div>
+              <p className="text-gray-600 dark:text-gray-400">Funding Goal</p>
+              <p className="font-semibold dark:text-white">${projectData.amountToRaise?.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-gray-600 dark:text-gray-400">Creation Fee</p>
+              <p className="font-semibold dark:text-white">
+                {formatEther(creationFee)} {nativeCurrency}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Contracts to Deploy */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
+          <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Contracts to Deploy</h4>
+          <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+            <li>• Security Token (ERC-3643 compliant)</li>
+            <li>• Escrow Vault (milestone-based fund release)</li>
+            <li>• Modular Compliance (transfer restrictions)</li>
+            <li>• Dividend Distributor (profit sharing)</li>
+            <li>• Project NFT (ownership certificate)</li>
+          </ul>
+        </div>
+
+        {/* Progress Steps */}
+        {status !== 'idle' && (
+          <div className="mb-6">
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Progress</h4>
+            <div className="space-y-2">
+              <ProgressStep
+                label="Upload metadata to IPFS"
+                status={
+                  status === 'uploading' ? 'active' :
+                  ['waitingWallet', 'confirming', 'verifying', 'success'].includes(status) ? 'complete' :
+                  'pending'
+                }
+              />
+              <ProgressStep
+                label="Confirm transaction in wallet"
+                status={
+                  status === 'waitingWallet' ? 'active' :
+                  ['confirming', 'verifying', 'success'].includes(status) ? 'complete' :
+                  'pending'
+                }
+              />
+              <ProgressStep
+                label="Deploy contracts on-chain"
+                status={
+                  status === 'confirming' ? 'active' :
+                  ['verifying', 'success'].includes(status) ? 'complete' :
+                  'pending'
+                }
+              />
+              <ProgressStep
+                label="Verify on block explorer"
+                status={
+                  status === 'verifying' ? 'active' :
+                  status === 'success' ? 'complete' :
+                  'pending'
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Transaction Hash */}
+        {txHash && status === 'confirming' && (
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Transaction submitted</p>
+            <a
+              href={getTxUrl(txHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary-600 hover:text-primary-700 text-sm font-mono break-all"
+            >
+              {txHash}
+            </a>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-4">
+          <button
+            onClick={onBack}
+            disabled={status !== 'idle'}
+            className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
+          >
+            Back
+          </button>
+          <button
+            onClick={handleDeploy}
+            disabled={!canDeploy || status !== 'idle'}
+            className="flex-1 px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          >
+            {status === 'idle' ? (
+              `Deploy on ${chainName}`
+            ) : status === 'uploading' ? (
+              'Uploading to IPFS...'
+            ) : status === 'waitingWallet' ? (
+              'Confirm in Wallet...'
+            ) : status === 'confirming' ? (
+              'Deploying...'
+            ) : (
+              'Processing...'
+            )}
+          </button>
+        </div>
+
+        {/* Validation Errors */}
+        {!canDeploy && (
+          <p className="text-sm text-red-600 mt-4">
+            {!projectData.tokenName && 'Token name is required. '}
+            {!projectData.tokenSymbol && 'Token symbol is required. '}
+            {(projectData.amountToRaise || 0) < 10000 && 'Minimum funding goal is $10,000.'}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
 
-function Step({ label, done, active }: { label: string; done: boolean; active: boolean }) {
+// Helper Components
+
+function ContractRow({ 
+  label, 
+  address, 
+  explorerUrl,
+  verificationStatus 
+}: { 
+  label: string; 
+  address: Address; 
+  explorerUrl: string;
+  verificationStatus?: 'pending' | 'success' | 'failed';
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
+        {verificationStatus === 'pending' && (
+          <span className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        )}
+        {verificationStatus === 'success' && (
+          <span className="text-green-500 text-sm">✓ Verified</span>
+        )}
+        {verificationStatus === 'failed' && (
+          <span className="text-yellow-500 text-sm">⚠ Not verified</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <a
+          href={`${explorerUrl}/address/${address}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono text-xs text-primary-600 hover:text-primary-700"
+        >
+          {address.slice(0, 6)}...{address.slice(-4)}
+        </a>
+        <button
+          onClick={handleCopy}
+          className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        >
+          {copied ? (
+            <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProgressStep({ 
+  label, 
+  status 
+}: { 
+  label: string; 
+  status: 'pending' | 'active' | 'complete';
+}) {
   return (
     <div className="flex items-center gap-3">
-      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-        done ? 'bg-green-500 text-white' : 
-        active ? 'bg-purple-500 text-white animate-pulse' : 
-        'bg-gray-700 text-gray-500'
-      }`}>
-        {done ? '✓' : active ? '•' : '○'}
+      <div className={`
+        w-6 h-6 rounded-full flex items-center justify-center
+        ${status === 'complete' ? 'bg-green-500' : ''}
+        ${status === 'active' ? 'bg-primary-500' : ''}
+        ${status === 'pending' ? 'bg-gray-300 dark:bg-gray-600' : ''}
+      `}>
+        {status === 'complete' && (
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+        {status === 'active' && (
+          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        )}
+        {status === 'pending' && (
+          <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full" />
+        )}
       </div>
-      <span className={done ? 'text-green-400' : active ? 'text-white' : 'text-gray-500'}>{label}</span>
-      {active && <span className="text-gray-500 text-sm animate-pulse">Processing...</span>}
-    </div>
-  );
-}
-
-function ContractRow({ label, address, status }: { label: string; address: string; status: 'pending' | 'success' | 'failed' }) {
-  return (
-    <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-      <div>
-        <span className="text-gray-400 text-sm">{label}</span>
-       <a 
-          href={`${EXPLORER_URL}/address/${address}`} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          className="block text-purple-400 hover:underline font-mono text-xs"
-        >
-          {address}
-        </a>
-      </div>
-      <span title={status === 'success' ? 'Verified' : status === 'failed' ? 'Verification pending' : 'Verifying...'}>
-        {status === 'success' ? '✅' : status === 'failed' ? '⚠️' : '⏳'}
+      <span className={`
+        text-sm
+        ${status === 'complete' ? 'text-green-600 dark:text-green-400' : ''}
+        ${status === 'active' ? 'text-primary-600 dark:text-primary-400 font-medium' : ''}
+        ${status === 'pending' ? 'text-gray-500 dark:text-gray-400' : ''}
+      `}>
+        {label}
       </span>
     </div>
   );
 }
-
-const addMilestonesToEscrow = async (projectId: bigint, escrowAddress: string) => {
-  const escrowContract = getContract({
-    address: escrowAddress as `0x${string}`,
-    abi: ESCROW_ABI,
-    client: { public: publicClient, wallet: walletClient },
-  });
-
-  for (let i = 0; i < data.milestones.length; i++) {
-    const milestone = data.milestones[i];
-    const targetTimestamp = Math.floor(new Date(milestone.targetDate).getTime() / 1000);
-    
-    // Calculate amount in wei (assuming 18 decimals for USD representation)
-    const amountWei = parseUnits(milestone.amountUSD.toString(), 18);
-    
-    const tx = await escrowContract.write.addMilestone([
-      projectId,
-      milestone.title,
-      milestone.description,
-      amountWei,
-      targetTimestamp,
-    ]);
-    
-    await publicClient.waitForTransactionReceipt({ hash: tx });
-    
-    setProgress(`Added milestone ${i + 1}/${data.milestones.length}: ${milestone.title}`);
-  }
-};
-
-export default StepDeploy;
-

@@ -10,6 +10,7 @@ import { useKYC, getTierInfo, KYCTier } from '@/contexts/KYCContext';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Menu, X } from 'lucide-react';
+import { ChainSelectorModal } from './ui/ChainSelectorModal';
 
 // KYC Badge Component
 function KYCBadge() {
@@ -70,9 +71,9 @@ function KYCBadge() {
         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80 ${getStatusStyle()}`}
       >
         <span className="text-sm">{getStatusIcon()}</span>
-        <span className="text-sm font-medium">{getStatusLabel()}</span>
+        <span className="text-sm font-medium hidden sm:inline">{getStatusLabel()}</span>
         {isApproved && kycData.tier !== 'None' && (
-          <span className="text-xs opacity-70">
+          <span className="text-xs opacity-70 hidden md:inline">
             {displayLimit(kycData.remainingLimit)}
           </span>
         )}
@@ -295,13 +296,14 @@ export default function Header() {
   const { isConnected } = useAccount();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [chainModalOpen, setChainModalOpen] = useState(false);
   
   // Use the admin hook instead of hardcoded addresses
   const { isAdmin, isSuperAdmin, isLoading: isAdminLoading } = useAdmin();
 
   // Determine current section for active states
   const isAboutSection = pathname.startsWith('/about') || pathname === '/contact';
-  const isLetsStartSection = pathname.startsWith('/tokenise') || pathname.startsWith('/crowdfunding') || pathname.startsWith('/trade');
+  const isLetsStartSection = pathname.startsWith('/tokenize') || pathname.startsWith('/crowdfunding') || pathname.startsWith('/trade');
   const isPlatformSection = pathname === '/exchange' || pathname === '/projects' || pathname.startsWith('/project/') || pathname === '/create' || pathname === '/kyc';
 
   // Menu items
@@ -313,7 +315,7 @@ export default function Header() {
   ];
 
   const letsStartItems = [
-    { href: '/tokenise', label: 'Tokenise Assets', description: 'Create & manage digital assets' },
+    { href: '/tokenize', label: 'Tokenize Assets', description: 'Create & manage digital assets' },
     { href: '/crowdfunding', label: 'Raise Funds', description: 'Launch a crowdfunding campaign' },
     { href: '/trade', label: 'Trade', description: 'B2B trade platform (Coming soon)' },
   ];
@@ -331,108 +333,134 @@ export default function Header() {
   }, [pathname]);
 
   return (
-    <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <Image 
-              src="/logoRWA.png" 
-              alt="RWA Experts" 
-              width={50}
-              height={50}
-              className="object-contain"
-            />
-            <span className="text-xl font-bold text-white">RWA Experts</span>
-          </Link>
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
-            <DropdownMenu 
-              label="About" 
-              items={aboutItems}
-              isActive={isAboutSection}
-            />
-            <DropdownMenu 
-              label="Let's Start" 
-              items={letsStartItems}
-              isActive={isLetsStartSection}
-            />
-            <DropdownMenu 
-              label="Platform" 
-              items={platformItems}
-              isActive={isPlatformSection}
-            />
-            {/* Admin link - only visible to admins (from database) */}
-            {isAdmin && (
-              <Link 
-                href="/admin" 
-                className={`flex items-center gap-1 transition-colors ${
-                  pathname.startsWith('/admin') ? 'text-white' : 'text-gray-300 hover:text-white'
-                }`}
-              >
-                Admin
-                {isSuperAdmin && (
-                  <span className="text-yellow-400 text-xs">★</span>
-                )}
-              </Link>
-            )}
-          </nav>
+    <>
+      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-2">
+              <Image 
+                src="/logoRWA.png" 
+                alt="RWA Experts" 
+                width={50}
+                height={50}
+                className="object-contain"
+              />
+              <span className="text-xl font-bold text-white hidden sm:inline">RWA Experts</span>
+            </Link>
 
-          {/* Right Side: KYC Badge + Connect Button + Mobile Menu */}
-          <div className="flex items-center gap-3">
-            {isConnected && <KYCBadge />}
-            <ConnectButton />
-            
-            {/* Mobile Menu Button */}
-            <button
-              className="md:hidden p-2 text-gray-400 hover:text-white transition-colors"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Navigation */}
-        {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-gray-800">
-            <nav className="space-y-2">
-              <MobileDropdown 
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-6">
+              <DropdownMenu 
                 label="About" 
                 items={aboutItems}
-                onItemClick={() => setMobileMenuOpen(false)}
+                isActive={isAboutSection}
               />
-              <MobileDropdown 
+              <DropdownMenu 
                 label="Let's Start" 
                 items={letsStartItems}
-                onItemClick={() => setMobileMenuOpen(false)}
+                isActive={isLetsStartSection}
               />
-              <MobileDropdown 
+              <DropdownMenu 
                 label="Platform" 
                 items={platformItems}
-                onItemClick={() => setMobileMenuOpen(false)}
+                isActive={isPlatformSection}
               />
-              {/* Admin link - only visible to admins */}
+              {/* Admin link - only visible to admins (from database) */}
               {isAdmin && (
                 <Link 
                   href="/admin" 
-                  className="flex items-center gap-2 py-2 text-gray-300 hover:text-white transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-1 transition-colors ${
+                    pathname.startsWith('/admin') ? 'text-white' : 'text-gray-300 hover:text-white'
+                  }`}
                 >
                   Admin
                   {isSuperAdmin && (
-                    <span className="text-yellow-400 text-xs">★ Super</span>
+                    <span className="text-yellow-400 text-xs">★</span>
                   )}
                 </Link>
               )}
             </nav>
+
+            {/* Right Side: Chain Badge + KYC Badge + Connect Button + Mobile Menu */}
+            <div className="flex items-center gap-2 sm:gap-3">
+
+              {/* KYC Badge - only when connected */}
+              {isConnected && <KYCBadge />}
+              
+              {/* Connect Button */}
+              <ConnectButton />
+              
+              {/* Mobile Menu Button */}
+              <button
+                className="md:hidden p-2 text-gray-400 hover:text-white transition-colors"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? (
+                  <X className="w-6 h-6" />
+                ) : (
+                  <Menu className="w-6 h-6" />
+                )}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-    </header>
+
+          {/* Mobile Navigation */}
+          {mobileMenuOpen && (
+            <div className="md:hidden py-4 border-t border-gray-800">
+              <nav className="space-y-2">
+                <MobileDropdown 
+                  label="About" 
+                  items={aboutItems}
+                  onItemClick={() => setMobileMenuOpen(false)}
+                />
+                <MobileDropdown 
+                  label="Let's Start" 
+                  items={letsStartItems}
+                  onItemClick={() => setMobileMenuOpen(false)}
+                />
+                <MobileDropdown 
+                  label="Platform" 
+                  items={platformItems}
+                  onItemClick={() => setMobileMenuOpen(false)}
+                />
+                
+                {/* Network Selector in Mobile Menu */}
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setChainModalOpen(true);
+                  }}
+                  className="flex items-center gap-2 w-full py-2 text-gray-300 hover:text-white transition-colors"
+                >
+                  <span>🔗</span>
+                  Switch Network
+                </button>
+                
+                {/* Admin link - only visible to admins */}
+                {isAdmin && (
+                  <Link 
+                    href="/admin" 
+                    className="flex items-center gap-2 py-2 text-gray-300 hover:text-white transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Admin
+                    {isSuperAdmin && (
+                      <span className="text-yellow-400 text-xs">★ Super</span>
+                    )}
+                  </Link>
+                )}
+              </nav>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Chain Selector Modal */}
+      <ChainSelectorModal 
+        isOpen={chainModalOpen} 
+        onClose={() => setChainModalOpen(false)} 
+      />
+    </>
   );
 }

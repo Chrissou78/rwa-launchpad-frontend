@@ -1,13 +1,81 @@
 // src/app/api/payments/stripe/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createWalletClient, createPublicClient, http, parseUnits } from 'viem';
-import { avalancheFuji } from 'viem/chains';
+import { createWalletClient, createPublicClient, http, parseUnits, Chain } from 'viem';
+import { avalancheFuji, polygon, polygonAmoy, avalanche, mainnet, sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { ZERO_ADDRESS, RPC_URL, CONTRACTS } from '@/config/contracts';
+import { ZERO_ADDRESS } from '@/config/contracts';
 import { RWAProjectNFTABI, RWASecurityTokenABI } from '@/config/abis';
 
-// Lazy initialization
+// Chain configurations for server-side use
+const CHAIN_CONFIGS: Record<number, {
+  chain: Chain;
+  rpcUrl: string;
+  contracts: {
+    RWAProjectNFT?: string;
+    OffChainInvestmentManager?: string;
+  };
+}> = {
+  // Avalanche Fuji Testnet
+  43113: {
+    chain: avalancheFuji,
+    rpcUrl: process.env.AVALANCHE_FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc',
+    contracts: {
+      RWAProjectNFT: process.env.AVALANCHE_FUJI_PROJECT_NFT,
+      OffChainInvestmentManager: process.env.AVALANCHE_FUJI_OFFCHAIN_MANAGER,
+    },
+  },
+  // Polygon Amoy Testnet
+  80002: {
+    chain: polygonAmoy,
+    rpcUrl: process.env.POLYGON_AMOY_RPC_URL || 'https://rpc-amoy.polygon.technology',
+    contracts: {
+      RWAProjectNFT: process.env.POLYGON_AMOY_PROJECT_NFT,
+      OffChainInvestmentManager: process.env.POLYGON_AMOY_OFFCHAIN_MANAGER,
+    },
+  },
+  // Avalanche Mainnet
+  43114: {
+    chain: avalanche,
+    rpcUrl: process.env.AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc',
+    contracts: {
+      RWAProjectNFT: process.env.AVALANCHE_PROJECT_NFT,
+      OffChainInvestmentManager: process.env.AVALANCHE_OFFCHAIN_MANAGER,
+    },
+  },
+  // Polygon Mainnet
+  137: {
+    chain: polygon,
+    rpcUrl: process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com',
+    contracts: {
+      RWAProjectNFT: process.env.POLYGON_PROJECT_NFT,
+      OffChainInvestmentManager: process.env.POLYGON_OFFCHAIN_MANAGER,
+    },
+  },
+  // Ethereum Mainnet
+  1: {
+    chain: mainnet,
+    rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
+    contracts: {
+      RWAProjectNFT: process.env.ETHEREUM_PROJECT_NFT,
+      OffChainInvestmentManager: process.env.ETHEREUM_OFFCHAIN_MANAGER,
+    },
+  },
+  // Sepolia Testnet
+  11155111: {
+    chain: sepolia,
+    rpcUrl: process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org',
+    contracts: {
+      RWAProjectNFT: process.env.SEPOLIA_PROJECT_NFT,
+      OffChainInvestmentManager: process.env.SEPOLIA_OFFCHAIN_MANAGER,
+    },
+  },
+};
+
+// Default chain ID if not specified
+const DEFAULT_CHAIN_ID = 43113; // Avalanche Fuji
+
+// Lazy initialization for Stripe
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
     throw new Error('STRIPE_SECRET_KEY not configured');
@@ -24,7 +92,36 @@ function getWebhookSecret() {
   return process.env.STRIPE_WEBHOOK_SECRET;
 }
 
-// OffChainInvestmentManager ABI - specific to this contract, not in central file
+// Get chain configuration
+function getChainConfig(chainId: number) {
+  const config = CHAIN_CONFIGS[chainId];
+  if (!config) {
+    throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+  return config;
+}
+
+// Create public client for a specific chain
+function createChainPublicClient(chainId: number) {
+  const config = getChainConfig(chainId);
+  return createPublicClient({
+    chain: config.chain,
+    transport: http(config.rpcUrl),
+  });
+}
+
+// Create wallet client for a specific chain
+function createChainWalletClient(chainId: number, privateKey: `0x${string}`) {
+  const config = getChainConfig(chainId);
+  const account = privateKeyToAccount(privateKey);
+  return createWalletClient({
+    account,
+    chain: config.chain,
+    transport: http(config.rpcUrl),
+  });
+}
+
+// OffChainInvestmentManager ABI - specific to this contract
 const OffChainInvestmentManagerABI = [
   {
     name: 'createInvestment',
@@ -55,30 +152,42 @@ const OffChainInvestmentManagerABI = [
   },
 ] as const;
 
-const publicClient = createPublicClient({
-  chain: avalancheFuji,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
-});
-
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
-  const { projectId, investorAddress, amountUSD } = paymentIntent.metadata;
+  const { projectId, investorAddress, amountUSD, chainId: chainIdStr } = paymentIntent.metadata;
 
   if (!projectId || !investorAddress || !amountUSD) {
     console.error('Missing metadata in payment intent');
     return;
   }
 
-  console.log(`Processing Stripe payment: project=${projectId}, investor=${investorAddress}, amount=$${amountUSD}`);
+  // Parse chain ID from metadata, default to Avalanche Fuji
+  const chainId = chainIdStr ? parseInt(chainIdStr, 10) : DEFAULT_CHAIN_ID;
+
+  // Validate chain ID
+  if (!CHAIN_CONFIGS[chainId]) {
+    console.error(`Unsupported chain ID in payment metadata: ${chainId}`);
+    await storeFailedPayment(paymentIntent, `Unsupported chain ID: ${chainId}`);
+    return;
+  }
+
+  const chainConfig = getChainConfig(chainId);
+  const chainName = chainConfig.chain.name;
+
+  console.log(`Processing Stripe payment on ${chainName} (${chainId}): project=${projectId}, investor=${investorAddress}, amount=$${amountUSD}`);
 
   try {
-    if (!CONTRACTS.RWAProjectNFT) {
-      console.error('RWAProjectNFT contract not configured');
-      await storeFailedPayment(paymentIntent, 'RWAProjectNFT not configured');
+    const contracts = chainConfig.contracts;
+
+    if (!contracts.RWAProjectNFT) {
+      console.error(`RWAProjectNFT contract not configured for chain ${chainId}`);
+      await storeFailedPayment(paymentIntent, `RWAProjectNFT not configured for ${chainName}`);
       return;
     }
 
+    const publicClient = createChainPublicClient(chainId);
+
     const project = await publicClient.readContract({
-      address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+      address: contracts.RWAProjectNFT as `0x${string}`,
       abi: RWAProjectNFTABI,
       functionName: 'getProject',
       args: [BigInt(projectId)],
@@ -88,8 +197,8 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     const currentTotalRaised = project.totalRaised as bigint;
 
     if (!securityToken || securityToken === ZERO_ADDRESS) {
-      console.error('Project has no security token deployed');
-      await storeFailedPayment(paymentIntent, 'No security token');
+      console.error(`Project ${projectId} on ${chainName} has no security token deployed`);
+      await storeFailedPayment(paymentIntent, `No security token on ${chainName}`);
       return;
     }
 
@@ -104,17 +213,12 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
       return;
     }
 
-    const account = privateKeyToAccount(VERIFIER_PRIVATE_KEY);
-    const walletClient = createWalletClient({
-      account,
-      chain: avalancheFuji,
-      transport: http(process.env.NEXT_PUBLIC_RPC_URL || RPC_URL),
-    });
+    const walletClient = createChainWalletClient(chainId, VERIFIER_PRIVATE_KEY);
 
     // Step 1: Create investment and mint tokens
-    if (CONTRACTS.OffChainInvestmentManager && CONTRACTS.OffChainInvestmentManager !== '') {
+    if (contracts.OffChainInvestmentManager && contracts.OffChainInvestmentManager !== '') {
       const existingId = await publicClient.readContract({
-        address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
+        address: contracts.OffChainInvestmentManager as `0x${string}`,
         abi: OffChainInvestmentManagerABI,
         functionName: 'paymentReferenceToId',
         args: [paymentIntent.id],
@@ -122,16 +226,16 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
 
       if (existingId && existingId > 0n) {
         const hash = await walletClient.writeContract({
-          address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
+          address: contracts.OffChainInvestmentManager as `0x${string}`,
           abi: OffChainInvestmentManagerABI,
           functionName: 'confirmAndMint',
           args: [existingId],
         });
-        console.log(`Confirmed existing investment: ${hash}`);
+        console.log(`[${chainName}] Confirmed existing investment: ${hash}`);
         await publicClient.waitForTransactionReceipt({ hash });
       } else {
         const createHash = await walletClient.writeContract({
-          address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
+          address: contracts.OffChainInvestmentManager as `0x${string}`,
           abi: OffChainInvestmentManagerABI,
           functionName: 'createInvestment',
           args: [
@@ -146,19 +250,19 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         await publicClient.waitForTransactionReceipt({ hash: createHash });
 
         const newId = await publicClient.readContract({
-          address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
+          address: contracts.OffChainInvestmentManager as `0x${string}`,
           abi: OffChainInvestmentManagerABI,
           functionName: 'paymentReferenceToId',
           args: [paymentIntent.id],
         });
 
         const mintHash = await walletClient.writeContract({
-          address: CONTRACTS.OffChainInvestmentManager as `0x${string}`,
+          address: contracts.OffChainInvestmentManager as `0x${string}`,
           abi: OffChainInvestmentManagerABI,
           functionName: 'confirmAndMint',
           args: [newId],
         });
-        console.log(`Created and minted: ${mintHash}`);
+        console.log(`[${chainName}] Created and minted: ${mintHash}`);
         await publicClient.waitForTransactionReceipt({ hash: mintHash });
       }
     } else {
@@ -173,38 +277,57 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           paymentIntent.id,
         ],
       });
-      console.log(`Minted tokens directly: ${hash}`);
+      console.log(`[${chainName}] Minted tokens directly: ${hash}`);
       await publicClient.waitForTransactionReceipt({ hash });
     }
 
     // Step 2: Update totalRaised on RWAProjectNFT
     const newTotalRaised = currentTotalRaised + amountInUSDC;
-    console.log(`Updating totalRaised: ${currentTotalRaised} + ${amountInUSDC} = ${newTotalRaised}`);
+    console.log(`[${chainName}] Updating totalRaised: ${currentTotalRaised} + ${amountInUSDC} = ${newTotalRaised}`);
 
     const updateHash = await walletClient.writeContract({
-      address: CONTRACTS.RWAProjectNFT as `0x${string}`,
+      address: contracts.RWAProjectNFT as `0x${string}`,
       abi: RWAProjectNFTABI,
       functionName: 'updateTotalRaised',
       args: [BigInt(projectId), newTotalRaised],
     });
-    console.log(`Updated totalRaised: ${updateHash}`);
+    console.log(`[${chainName}] Updated totalRaised: ${updateHash}`);
     await publicClient.waitForTransactionReceipt({ hash: updateHash });
 
-    console.log(`Successfully processed payment ${paymentIntent.id} - totalRaised now: $${Number(newTotalRaised) / 1e6}`);
+    console.log(`[${chainName}] Successfully processed payment ${paymentIntent.id} - totalRaised now: $${Number(newTotalRaised) / 1e6}`);
   } catch (error) {
-    console.error('Failed to process payment:', error);
+    console.error(`[${chainName}] Failed to process payment:`, error);
     await storeFailedPayment(paymentIntent, String(error));
   }
 }
 
 async function storeFailedPayment(paymentIntent: Stripe.PaymentIntent, reason: string) {
+  const chainId = paymentIntent.metadata.chainId 
+    ? parseInt(paymentIntent.metadata.chainId, 10) 
+    : DEFAULT_CHAIN_ID;
+  
+  const chainName = CHAIN_CONFIGS[chainId]?.chain.name || `Unknown (${chainId})`;
+
   console.error('Failed payment - needs manual processing:', {
     paymentIntentId: paymentIntent.id,
+    chainId,
+    chainName,
     projectId: paymentIntent.metadata.projectId,
     investor: paymentIntent.metadata.investorAddress,
     amount: paymentIntent.metadata.amountUSD,
     reason,
   });
+
+  // TODO: Store in database for manual processing
+  // await db.failedPayments.create({
+  //   paymentIntentId: paymentIntent.id,
+  //   chainId,
+  //   projectId: paymentIntent.metadata.projectId,
+  //   investorAddress: paymentIntent.metadata.investorAddress,
+  //   amountUSD: paymentIntent.metadata.amountUSD,
+  //   reason,
+  //   createdAt: new Date(),
+  // });
 }
 
 export async function POST(request: NextRequest) {
@@ -235,7 +358,12 @@ export async function POST(request: NextRequest) {
       break;
 
     case 'payment_intent.payment_failed':
-      console.log(`Payment failed: ${(event.data.object as Stripe.PaymentIntent).id}`);
+      const failedIntent = event.data.object as Stripe.PaymentIntent;
+      const chainId = failedIntent.metadata.chainId 
+        ? parseInt(failedIntent.metadata.chainId, 10) 
+        : DEFAULT_CHAIN_ID;
+      const chainName = CHAIN_CONFIGS[chainId]?.chain.name || `Unknown`;
+      console.log(`[${chainName}] Payment failed: ${failedIntent.id}`);
       break;
 
     default:
@@ -243,4 +371,23 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ received: true });
+}
+
+// Health check endpoint for monitoring
+export async function GET() {
+  const supportedChains = Object.entries(CHAIN_CONFIGS).map(([id, config]) => ({
+    chainId: parseInt(id, 10),
+    name: config.chain.name,
+    hasProjectNFT: !!config.contracts.RWAProjectNFT,
+    hasOffChainManager: !!config.contracts.OffChainInvestmentManager,
+  }));
+
+  return NextResponse.json({
+    status: 'ok',
+    supportedChains,
+    defaultChainId: DEFAULT_CHAIN_ID,
+    stripeConfigured: !!process.env.STRIPE_SECRET_KEY,
+    webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
+    verifierConfigured: !!process.env.VERIFIER_PRIVATE_KEY,
+  });
 }

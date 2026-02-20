@@ -1,11 +1,30 @@
-import { EXPLORER_URL, CONTRACTS } from '@/config/contracts';
+// src/app/about/company/page.tsx
+'use client';
+
+import { useChainConfig } from '@/hooks/useChainConfig';
+import { CHAINS } from '@/config/chains';
+import { getDeployedChainIds } from '@/config/deployments';
 
 export default function CompanyPage() {
+  // Multichain config
+  const {
+    chainName,
+    contracts,
+    explorerUrl,
+    isDeployed,
+    nativeCurrency,
+    isTestnet,
+  } = useChainConfig();
+
+  // Get all deployed chains for the technology section
+  const deployedChainIds = getDeployedChainIds();
+  const deployedChains = deployedChainIds.map(id => CHAINS[id]).filter(Boolean);
+
   const milestones = [
     { year: '2026 Q1', title: 'Foundation', description: 'RWA Launchpad was founded with a vision to democratize real-world asset investments. Core smart contracts developed and audited for security and compliance.' },
-    { year: '2026 Q2', title: 'Testnet Launch', description: 'Platform launched on Avax Fuji testnet for community testing.' },
-    { year: '2026 Q3', title: 'Mainnet Preparation', description: 'Final audits and preparations for mainnet deployment.' },
-    { year: '2026 Q4', title: 'Mainnet Launch', description: 'Full platform launch on Avalanche mainnet with first RWA projects.' },
+    { year: '2026 Q2', title: 'Testnet Launch', description: 'Platform launched on multiple testnets for community testing across Avalanche, Polygon, and Ethereum ecosystems.' },
+    { year: '2026 Q3', title: 'Mainnet Preparation', description: 'Final audits and preparations for mainnet deployment across multiple chains.' },
+    { year: '2026 Q4', title: 'Multichain Launch', description: 'Full platform launch on multiple mainnets including Avalanche, Polygon, Arbitrum, and more.' },
   ];
 
   const values = [
@@ -45,8 +64,16 @@ export default function CompanyPage() {
     { value: '$10M+', label: 'Target AUM' },
     { value: '50+', label: 'Planned Projects' },
     { value: '10K+', label: 'Target Investors' },
-    { value: '5+', label: 'Asset Categories' },
+    { value: `${deployedChains.length}+`, label: 'Supported Chains' },
   ];
+
+  // Contract links for current chain
+  const contractLinks = isDeployed && contracts ? [
+    { name: 'Factory Contract', address: contracts.RWALaunchpadFactory },
+    { name: 'Project NFT', address: contracts.RWAProjectNFT },
+    { name: 'KYC Manager', address: contracts.KYCManager },
+    { name: 'Tokenization Factory', address: contracts.RWATokenizationFactory },
+  ].filter(c => c.address) : [];
 
   return (
     <div className="space-y-16">
@@ -163,41 +190,83 @@ export default function CompanyPage() {
         </div>
       </section>
 
-      {/* Technology Section */}
+      {/* Technology Section - Multichain */}
       <section className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded-3xl p-8 border border-purple-500/20">
-        <h2 className="text-3xl font-bold text-white mb-6 text-center">Built on Avalanche</h2>
-        <div className="max-w-3xl mx-auto text-center">
-          <p className="text-gray-300 mb-6">
-            Our platform is built on Avalanche, a leading Ethereum scaling solution that provides 
-            fast, low-cost transactions while maintaining the security of Ethereum. All our 
+        <h2 className="text-3xl font-bold text-white mb-6 text-center">Multichain Infrastructure</h2>
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="text-gray-300 mb-8">
+            Our platform is deployed across multiple blockchain networks, providing users with 
+            flexibility, low transaction costs, and access to different ecosystems. All our 
             smart contracts are open source and verified on-chain.
           </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <a
-              href={`${EXPLORER_URL}/address/${CONTRACTS.RWALaunchpadFactory}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
-            >
-              View Factory Contract →
-            </a>
-            <a
-              href={`${EXPLORER_URL}/address/${CONTRACTS.RWAProjectNFT}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
-            >
-              View Project NFT →
-            </a>
-            <a
-              href={`${EXPLORER_URL}/address/${CONTRACTS.KYCManager}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
-            >
-              View KYC Manager →
-            </a>
+
+          {/* Supported Chains */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-white mb-4">Deployed Networks</h3>
+            <div className="flex flex-wrap justify-center gap-3">
+              {deployedChains.map((chain) => (
+                <div
+                  key={chain.id}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                    chain.testnet
+                      ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30'
+                      : 'bg-green-500/10 text-green-400 border border-green-500/30'
+                  }`}
+                >
+                  {chain.name}
+                  {chain.testnet && <span className="ml-2 text-xs opacity-70">(Testnet)</span>}
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Current Chain Contracts */}
+          {isDeployed && contractLinks.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Contracts on {chainName}
+                {isTestnet && <span className="ml-2 text-yellow-400 text-sm">(Testnet)</span>}
+              </h3>
+              <div className="flex flex-wrap justify-center gap-3">
+                {contractLinks.map((contract, index) => (
+                  <a
+                    key={index}
+                    href={`${explorerUrl}/address/${contract.address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors flex items-center gap-2"
+                  >
+                    <span>{contract.name}</span>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                ))}
+              </div>
+              <p className="text-gray-500 text-xs mt-4">
+                View contract source code and transactions on the block explorer
+              </p>
+            </div>
+          )}
+
+          {/* Not deployed message */}
+          {!isDeployed && chainName && (
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mt-4">
+              <p className="text-yellow-400 text-sm">
+                Contracts are not yet deployed on {chainName}. 
+                Switch to a supported network to view contract addresses.
+              </p>
+            </div>
+          )}
+
+          {/* Native Currency Info */}
+          {isDeployed && (
+            <div className="mt-8 p-4 bg-gray-800/50 rounded-lg inline-block">
+              <p className="text-gray-400 text-sm">
+                Transactions on {chainName} use <span className="text-white font-semibold">{nativeCurrency}</span> for gas fees
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
