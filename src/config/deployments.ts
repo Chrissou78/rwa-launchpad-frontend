@@ -47,6 +47,8 @@ export interface DeploymentData {
     CREATION_FEE_FORMATTED: string;
     KYC_FEE: string;
     KYC_FEE_FORMATTED: string;
+    ESCROW_TRANSACTION_FEE_BPS?: number;      // Optional for backward compat
+    ESCROW_TRANSACTION_FEE_PERCENT?: string;  // Optional for backward compat
   };
   deployedAt?: string;
   version: string;
@@ -140,6 +142,8 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       CREATION_FEE_FORMATTED: "0.01",
       KYC_FEE: "50000000000000000",
       KYC_FEE_FORMATTED: "0.05",
+      ESCROW_TRANSACTION_FEE_BPS: 100,
+      ESCROW_TRANSACTION_FEE_PERCENT: "1",
     },
     deployedAt: "2026-02-20",
     version: "1.0.0",
@@ -159,18 +163,58 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       CREATION_FEE_FORMATTED: "0.1",
       KYC_FEE: "100000000000000000",
       KYC_FEE_FORMATTED: "0.1",
+      ESCROW_TRANSACTION_FEE_BPS: 100,
+      ESCROW_TRANSACTION_FEE_PERCENT: "1",
     },
   },
 
   // ========================================
-  // Polygon Amoy Testnet (placeholder)
+  // Polygon Amoy Testnet - DEPLOYED
   // ========================================
   80002: {
-    ...EMPTY_DEPLOYMENT,
-    tokens: {
-      USDC: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
-      USDT: ZERO,
+    contracts: {
+      RWAProjectNFT: "0xc0a4048dC08a4264f23e6421fE7C39f85893c177",
+      RWALaunchpadFactory: "0x3526eA23462EEF440830883755FE4c7C2E950D4D",
+      KYCManager: "0x0f717E38086dE75e91a06A94651C5F9f65Ea46DA",
+      RWATokenizationFactory: "0x3CFf301e5cBfBD6E477D324C219CEE122af611A4",
+      RWATradeEscrow: "0xD0F152D827B9Ff649F2b51C2Ce0057B080980691",  // ✅ ADDED
+      IdentityRegistry: "0x9f41B622620194Efe33F3E6ea98491b596A3fbfc",
+      IdentityRegistryStorage: "0x7E8F717E4797DB78216c94865EF632C838Bb8210",
+      ClaimTopicsRegistry: "0x91B0842f54e5b665ac0A522028fa689A35297F7f",
+      TrustedIssuersRegistry: "0x5072Bf6B3175085BFd0E369e88904388e9cD2053",
+      RWASecurityExchange: "0x9aF6753638516dB3e96A1A2d7841931Bc1Af7730",
+      OffChainInvestmentManager: "0x5148e1C544a230C5930B41b822C1a20479Bfd1eF",
+      CountryRestrictModule: "0xB4e54DF18640a5A3e9215e41F804a057D57ef13B",
+      AccreditedInvestorModule: "0x994Ec9edE136a1553B0043Bb918E9663c473bb6e",
+      Implementations: {
+        SecurityToken: "0x8E3cb291808cd11De2784ad755583c81271d7CB6",
+        EscrowVault: "0xDaB11CBCE78B74855bfFe1Ecde32B9E398735E21",
+        Compliance: "0xE96EC2CBF6286ecDd4b62652249b4671d759bB6f",
+        ProjectNFT: "0x1cBb32106cba839F3B832d0f7E97eBFA478b6C9f",
+        KYCManager: "0xd2A1A01A7c09248F799aD3a13b22768aE6a57154",
+        OffChainManager: "0xFdfCF4bedd5b2b2F1551Bc5504a52CDb7ECc5827",
+        Exchange: "0x663b7b7E2033B379aE36120e9511eFBF9A8280e0",
+        DividendDistributor: "0x14B1f263A533b5973A1bC3Bb3DfEB1EcDBf83FDe",
+        MaxBalanceModule: "0x1017BAE2fa985cfa9C507C433D9eF9F1b7c1a623",
+        LockupModule: "0xE88C3bc8EBa58cbB53F02a546A6d960b266cA9AB",
+        RWATradeEscrow: "0xD0F152D827B9Ff649F2b51C2Ce0057B080980691",
+        TokenizationFactory: "0x0194e637d64F2367fb229f3168DaB3E8817911CE",
+      },
     },
+    tokens: {
+      USDC: "0xEd589B57e559874A5202a0FB82406c46A2116675",
+      USDT: "0xfa86C7c30840694293a5c997f399d00A4eD3cDD8",
+    },
+    fees: {
+      CREATION_FEE: "10000000000000000",
+      CREATION_FEE_FORMATTED: "0.01",
+      KYC_FEE: "50000000000000000",
+      KYC_FEE_FORMATTED: "0.05",
+      ESCROW_TRANSACTION_FEE_BPS: 100,
+      ESCROW_TRANSACTION_FEE_PERCENT: "1",
+    },
+    deployedAt: "2026-02-21",
+    version: "1.0.0",
   },
 
   // ========================================
@@ -287,18 +331,18 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
   },
 
   // ========================================
-  // BNB Chain Testnet (NEW)
+  // BNB Chain Testnet (placeholder)
   // ========================================
   97: {
     ...EMPTY_DEPLOYMENT,
     tokens: {
-      USDC: "0x64544969ed7EBf5f083679233325356EbE738930", // BSC Testnet USDC
-      USDT: "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd", // BSC Testnet USDT
+      USDC: "0x64544969ed7EBf5f083679233325356EbE738930",
+      USDT: "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd",
     },
     fees: {
-      CREATION_FEE: "10000000000000000",   // 0.01 tBNB
+      CREATION_FEE: "10000000000000000",
       CREATION_FEE_FORMATTED: "0.01",
-      KYC_FEE: "50000000000000000",        // 0.05 tBNB
+      KYC_FEE: "50000000000000000",
       KYC_FEE_FORMATTED: "0.05",
     },
   },
