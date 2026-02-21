@@ -336,8 +336,8 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
   97: {
     ...EMPTY_DEPLOYMENT,
     tokens: {
-      USDC: "0x64544969ed7EBf5f083679233325356EbE738930",
-      USDT: "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd",
+      USDC: "0x502e3c88828db1b478c38CD251Bfe861429b9482",
+      USDT: "0xe57d2BA10a92eb04eD1B56Cb2dE9D67799782835",
     },
     fees: {
       CREATION_FEE: "10000000000000000",
