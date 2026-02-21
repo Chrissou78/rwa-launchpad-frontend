@@ -46,6 +46,7 @@ const chainLogos: Record<number, string> = {
   84532: '/chains/base.svg',
   10: '/chains/optimism.svg',
   56: '/chains/bnb.svg',
+  97: '/chains/bnb.svg',
   31337: '/chains/ethereum.svg',
 };
 
