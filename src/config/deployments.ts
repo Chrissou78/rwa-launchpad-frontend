@@ -334,7 +334,35 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
   // BNB Chain Testnet (placeholder)
   // ========================================
   97: {
-    ...EMPTY_DEPLOYMENT,
+    contracts: {
+      RWAProjectNFT: "0x609915eCcf8C784f021ef49F4568d51132185D77",
+      RWALaunchpadFactory: "0x3D58fFF590d1E925fd0f510e96C20bc12691840F",
+      KYCManager: "0x983BeE34CA5747B2Ea9014D60882e48da9b94a24",
+      RWATokenizationFactory: "0x27a3199C114621C384ddC50C755bdbFa79809075",
+      RWATradeEscrow: "0xCE42B1F13e1B5311Ad6c2Cf75D5351385e91f914",
+      IdentityRegistry: "0x2ac12b2Dbf343146A11cCA2DC1467148DAEb4447",
+      IdentityRegistryStorage: "0x90Ae280C9b591F136883A243661ce63df517108a",
+      ClaimTopicsRegistry: "0x22005206f3FeC3A12Eb507591De8f201e0807b5d",
+      TrustedIssuersRegistry: "0x01395d6ac65868A48eE2Df3DB41e2Fd4d4387B5D",
+      RWASecurityExchange: "0xf34eE271324B3EE33a9d8A3dE3FFa5be5981E22c",
+      OffChainInvestmentManager: "0xbC7c83af353c286dC8Aa31A3254b4D058134F481",
+      CountryRestrictModule: "0x9b869Dbb6a9c071f7993fC5609F13792FCF1647D",
+      AccreditedInvestorModule: "0x9c4Bd10F3e7D13Beca138dFE0866430c231006DD",
+      Implementations: {
+        SecurityToken: "0xC8e4E9B4e2814c7E5295DE8809E7Dc321539fe9e",
+        EscrowVault: "0xEcD5F2772fF19089f46f1542A07736dfeD9D17e7",
+        Compliance: "0x02D074440967709a56E91cDACfdB37f8Ca2843D9",
+        ProjectNFT: "0x44EBD95d5C6Ea4eB24DEa99231A0e87F0ED025DE",
+        KYCManager: "0xd24e102B207f55a7B13F2d269de5ebC2B526A2dF",
+        OffChainManager: "0xAc005d3978F6288755d532A1Aca59fe46D719146",
+        Exchange: "0x0D128B3480bb7566dc3c6846cEA5E1A25512c903",
+        DividendDistributor: "0x240221a1B94cc0bC81539b7Aa2A91932Cd06Bc12",
+        MaxBalanceModule: "0x887E74dDf58FF6a0F6DE51e0fe310e5943E13247",
+        LockupModule: "0x6FB518295aDe55D7c04b576A1385942638829701",
+        RWATradeEscrow: "0xCE42B1F13e1B5311Ad6c2Cf75D5351385e91f914",
+        TokenizationFactory: "0x80De45b0c75b0d4281dD6871d14cDe38785B2Cd1",
+      },
+    },
     tokens: {
       USDC: "0x502e3c88828db1b478c38CD251Bfe861429b9482",
       USDT: "0xe57d2BA10a92eb04eD1B56Cb2dE9D67799782835",
@@ -345,6 +373,8 @@ export const DEPLOYMENTS: Record<SupportedChainId, DeploymentData> = {
       KYC_FEE: "50000000000000000",
       KYC_FEE_FORMATTED: "0.05",
     },
+    deployedAt: "2026-02-21",
+    version: "1.0.0",
   },
 };
 
